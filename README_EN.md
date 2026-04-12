@@ -44,7 +44,7 @@ Layer 3: cc-gateway API reverse proxy (optional)
 
 ```bash
 # 1. Clone
-git clone https://github.com/YOUR_USER/claude-env.git
+git clone https://github.com/alex1678747287/claude-env.git
 cd claude-env
 
 # 2. Install (auto-installs deps, configures hosts, generates config)

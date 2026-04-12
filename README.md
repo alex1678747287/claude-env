@@ -44,7 +44,7 @@ Layer 3: cc-gateway API 反向代理（可选）
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/YOUR_USER/claude-env.git
+git clone https://github.com/alex1678747287/claude-env.git
 cd claude-env
 
 # 2. 安装（自动安装依赖、配置 hosts、生成配置文件）
