@@ -477,12 +477,30 @@ claude_setup() {
 
     PROTECTION_SCORE=0
 
+    # Layer 2 env/telemetry/proxy are now auto-loaded from .bashrc
+    # Only re-apply if not already set (e.g. running outside normal shell)
+    if [ -z "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-}" ]; then
+        setup_telemetry_block
+        setup_env_disguise
+        setup_proxy
+    else
+        # Already loaded from .bashrc, just count the score
+        info "Environment pre-loaded from shell profile"
+        PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
+        # Verify proxy is working
+        local proxy_url="${PROXY_PROTOCOL}://${PROXY_HOST}:${PROXY_PORT}"
+        if curl -s --connect-timeout 3 --proxy "$proxy_url" https://httpbin.org/ip -o /dev/null 2>/dev/null; then
+            PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
+            info "Proxy connectivity OK: $proxy_url"
+        else
+            warn "Proxy not reachable at $proxy_url"
+        fi
+    fi
+
+    # These layers always need runtime activation
     setup_node_hook
-    setup_telemetry_block
-    setup_env_disguise
     setup_dns
     setup_hosts_block
-    setup_proxy
     setup_proxy_check
     setup_firewall
     setup_gateway

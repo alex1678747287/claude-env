@@ -520,13 +520,136 @@ SHELL_RC="$HOME/.bashrc"
 [ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
 
 if ! grep -q "claude-safe" "$SHELL_RC" 2>/dev/null; then
-    cat >> "$SHELL_RC" << 'ALIASES'
+    cat >> "$SHELL_RC" << 'SHELLBLOCK'
 
-# Claude Code Safe Environment v3
-alias claude-safe="source ~/.claude-safe/config.env 2>/dev/null; source ~/.claude-safe/claude-safe.sh"
-alias cs="claude-safe && claude-run"
-ALIASES
-    info "Aliases added to $SHELL_RC"
+# Claude Code Safe Environment v3 - auto-loaded on shell start
+# Config: ~/.claude-safe/config.env | Re-install: bash ~/claude-env/install.sh
+if [ -f ~/.claude-safe/config.env ]; then
+    set -a
+    source ~/.claude-safe/config.env
+    set +a
+fi
+
+# Proxy env vars (always available, not just inside cs)
+if [ -n "${CLAUDE_PROXY_HOST:-}" ] && [ -n "${CLAUDE_PROXY_PORT:-}" ]; then
+    _claude_proxy="${CLAUDE_PROXY_PROTOCOL:-http}://${CLAUDE_PROXY_HOST}:${CLAUDE_PROXY_PORT}"
+    export HTTP_PROXY="$_claude_proxy" HTTPS_PROXY="$_claude_proxy"
+    export http_proxy="$_claude_proxy" https_proxy="$_claude_proxy"
+    export ALL_PROXY="$_claude_proxy" all_proxy="$_claude_proxy"
+    export NO_PROXY="localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    export no_proxy="$NO_PROXY"
+    unset _claude_proxy
+fi
+
+# Identity disguise (always active)
+export TZ="${CLAUDE_TZ:-America/Los_Angeles}"
+export LANG="${CLAUDE_LANG:-en_US.UTF-8}"
+export LC_ALL="${CLAUDE_LANG:-en_US.UTF-8}"
+export HOSTNAME="${CLAUDE_HOSTNAME:-dev-workstation}"
+export LOGNAME="${CLAUDE_USER:-developer}"
+export TERM="xterm-256color"
+export SHELL="/bin/bash"
+
+# Remove WSL-leaking Windows env vars
+for _v in WSLENV WSL_DISTRO_NAME WSL_INTEROP WINDOWS_USERNAME USERPROFILE \
+    APPDATA LOCALAPPDATA PROGRAMFILES ProgramFiles ProgramW6432 WINDIR \
+    SystemRoot OS PROCESSOR_ARCHITECTURE PROCESSOR_IDENTIFIER \
+    NUMBER_OF_PROCESSORS CommonProgramFiles CommonProgramW6432 ProgramData \
+    SystemDrive TEMP TMP HOMEDRIVE HOMEPATH WT_SESSION WT_PROFILE_ID \
+    PULSE_SERVER WAYLAND_DISPLAY DISPLAY VSCODE_WSL_EXT_LOCATION \
+    VSCODE_IPC_HOOK_CLI PSModulePath DOTNET_ROOT; do
+    unset "$_v" 2>/dev/null
+done
+unset _v
+
+# Filter /mnt/c paths from PATH
+export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v '/mnt/[a-z]' | tr '\n' ':' | sed 's/:$//')
+
+# Telemetry kill switches (always active)
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export DISABLE_TELEMETRY=1 DISABLE_AUTOUPDATER=1
+export CLAUDE_CODE_ENABLE_TELEMETRY=0
+export CLAUDE_CODE_ATTRIBUTION_HEADER=false
+export DO_NOT_TRACK=1 NEXT_TELEMETRY_DISABLED=1
+export OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none OTEL_TRACES_EXPORTER=none OTEL_SDK_DISABLED=true
+export DD_TRACE_ENABLED=false DD_INSTRUMENTATION_TELEMETRY_ENABLED=false DD_REMOTE_CONFIGURATION_ENABLED=false
+export SENTRY_DSN="" SENTRY_ENVIRONMENT=""
+export GROWTHBOOK_CLIENT_KEY="" STATSIG_CLIENT_KEY=""
+
+# cs = launch Claude Code with full four-layer protection
+alias cs="source ~/.claude-safe/claude-safe.sh && claude-run"
+SHELLBLOCK
+    info "Shell integration added to $SHELL_RC (env vars auto-loaded on login)"
+else
+    # Already has claude-safe block - check if it's the old alias-only version and upgrade
+    if grep -q 'alias claude-safe="source' "$SHELL_RC" 2>/dev/null; then
+        warn "Upgrading shell integration from alias-only to full env setup..."
+        # Remove old block
+        sed -i '/# Claude Code Safe Environment v3/,/alias cs=/d' "$SHELL_RC"
+        # Re-run this section (recursive call avoided - just append)
+        cat >> "$SHELL_RC" << 'SHELLBLOCK'
+
+# Claude Code Safe Environment v3 - auto-loaded on shell start
+# Config: ~/.claude-safe/config.env | Re-install: bash ~/claude-env/install.sh
+if [ -f ~/.claude-safe/config.env ]; then
+    set -a
+    source ~/.claude-safe/config.env
+    set +a
+fi
+
+# Proxy env vars (always available, not just inside cs)
+if [ -n "${CLAUDE_PROXY_HOST:-}" ] && [ -n "${CLAUDE_PROXY_PORT:-}" ]; then
+    _claude_proxy="${CLAUDE_PROXY_PROTOCOL:-http}://${CLAUDE_PROXY_HOST}:${CLAUDE_PROXY_PORT}"
+    export HTTP_PROXY="$_claude_proxy" HTTPS_PROXY="$_claude_proxy"
+    export http_proxy="$_claude_proxy" https_proxy="$_claude_proxy"
+    export ALL_PROXY="$_claude_proxy" all_proxy="$_claude_proxy"
+    export NO_PROXY="localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    export no_proxy="$NO_PROXY"
+    unset _claude_proxy
+fi
+
+# Identity disguise (always active)
+export TZ="${CLAUDE_TZ:-America/Los_Angeles}"
+export LANG="${CLAUDE_LANG:-en_US.UTF-8}"
+export LC_ALL="${CLAUDE_LANG:-en_US.UTF-8}"
+export HOSTNAME="${CLAUDE_HOSTNAME:-dev-workstation}"
+export LOGNAME="${CLAUDE_USER:-developer}"
+export TERM="xterm-256color"
+export SHELL="/bin/bash"
+
+# Remove WSL-leaking Windows env vars
+for _v in WSLENV WSL_DISTRO_NAME WSL_INTEROP WINDOWS_USERNAME USERPROFILE \
+    APPDATA LOCALAPPDATA PROGRAMFILES ProgramFiles ProgramW6432 WINDIR \
+    SystemRoot OS PROCESSOR_ARCHITECTURE PROCESSOR_IDENTIFIER \
+    NUMBER_OF_PROCESSORS CommonProgramFiles CommonProgramW6432 ProgramData \
+    SystemDrive TEMP TMP HOMEDRIVE HOMEPATH WT_SESSION WT_PROFILE_ID \
+    PULSE_SERVER WAYLAND_DISPLAY DISPLAY VSCODE_WSL_EXT_LOCATION \
+    VSCODE_IPC_HOOK_CLI PSModulePath DOTNET_ROOT; do
+    unset "$_v" 2>/dev/null
+done
+unset _v
+
+# Filter /mnt/c paths from PATH
+export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v '/mnt/[a-z]' | tr '\n' ':' | sed 's/:$//')
+
+# Telemetry kill switches (always active)
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export DISABLE_TELEMETRY=1 DISABLE_AUTOUPDATER=1
+export CLAUDE_CODE_ENABLE_TELEMETRY=0
+export CLAUDE_CODE_ATTRIBUTION_HEADER=false
+export DO_NOT_TRACK=1 NEXT_TELEMETRY_DISABLED=1
+export OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none OTEL_TRACES_EXPORTER=none OTEL_SDK_DISABLED=true
+export DD_TRACE_ENABLED=false DD_INSTRUMENTATION_TELEMETRY_ENABLED=false DD_REMOTE_CONFIGURATION_ENABLED=false
+export SENTRY_DSN="" SENTRY_ENVIRONMENT=""
+export GROWTHBOOK_CLIENT_KEY="" STATSIG_CLIENT_KEY=""
+
+# cs = launch Claude Code with full four-layer protection
+alias cs="source ~/.claude-safe/claude-safe.sh && claude-run"
+SHELLBLOCK
+        info "Shell integration upgraded to full env setup"
+    else
+        info "Shell integration already configured"
+    fi
 fi
 
 # ============================================================
