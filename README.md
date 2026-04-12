@@ -54,15 +54,14 @@ Layer 4: 代理 IP 质量检测
 git clone https://github.com/alex1678747287/claude-env.git
 cd claude-env
 
-# 2. 安装（自动安装依赖、配置 hosts、生成配置文件）
+# 2. 交互式安装（自动引导配置代理、地区、DNS、cc-gateway、防火墙）
 bash install.sh
 
-# 3. 编辑代理配置（改成你的代理地址和端口）
-vim ~/.claude-safe/config.env
-
-# 4. 启动
+# 3. 启动
 cs
 ```
+
+安装过程会引导你完成所有配置，无需手动编辑任何文件。
 
 一键启动也可以用：
 
@@ -70,9 +69,36 @@ cs
 bash cs-quick.sh
 ```
 
+## 安装引导流程
+
+```
+Step 1: 代理配置
+  - 自动检测 Windows 宿主机 IP
+  - 自动探测代理端口 (7890/1080/10808)
+  - 测试代理连通性
+
+Step 2: 身份伪装
+  - 选择地区预设（美西/美东/日本/新加坡/英国/自定义）
+  - 自动匹配时区、语言、主机名
+
+Step 3: DNS + 遥测屏蔽
+  - 自动修复 DNS 泄漏
+  - 自动屏蔽 8 个遥测域名
+
+Step 4: cc-gateway 安装（必装）
+  - 自动 clone + npm install
+  - 自动生成启动脚本
+  - 启动时自动拉起
+
+Step 5: 防火墙 + 配置生成
+  - iptables 出站白名单
+  - 自动生成 config.env
+```
+
 ## 配置说明
 
-安装后配置文件在 `~/.claude-safe/config.env`：
+安装后配置文件在 `~/.claude-safe/config.env`（由安装引导自动生成）。
+如需修改，可以重新运行 `bash install.sh` 或手动编辑：
 
 ```bash
 # 代理设置（改成你的 Clash/V2Ray 地址）
@@ -116,28 +142,11 @@ CC_GATEWAY_PORT=8443
 | DNS 泄漏 | - | DNS 配置 | - |
 | 直连泄漏 | - | iptables 白名单 | - |
 
-## 可选升级
+## 补充工具
 
-### cc-gateway（推荐）
+### claude-private（可选）
 
-API 反向代理，重写请求中的所有指纹信息：
-
-```bash
-bash ~/.claude-safe/cc-gateway-setup.sh
-```
-
-### iptables 防火墙
-
-仅允许代理和必要域名的出站连接：
-
-```bash
-# 在 config.env 中设置
-CLAUDE_ENABLE_FIREWALL=true
-```
-
-### claude-private
-
-二进制补丁版本，替换 18 个遥测 URL：
+二进制补丁版本，替换 18 个遥测 URL，可与本工具叠加使用：
 
 ```bash
 # 参考 https://github.com/ultrmgns/claude-private
@@ -146,15 +155,15 @@ CLAUDE_ENABLE_FIREWALL=true
 ## 文件说明
 
 ```
-claude-safe.sh          # 主脚本：三层防护编排
-os-override.js          # Layer 1：Node.js/Bun os 模块 hook（CJS）
+claude-safe.sh          # 主脚本：四层防护编排
+os-override.js          # Layer 1：Node.js/Bun os/fs/child_process hook（CJS）
 os-override.mjs         # Layer 1：ESM wrapper（Node.js 20+ ESM 入口兼容）
 iptables-whitelist.sh   # Layer 2：iptables 出站白名单
-cc-gateway-setup.sh     # Layer 3：cc-gateway 安装脚本
-install.sh              # 一键安装脚本
+install.sh              # 交互式安装脚本（内置 cc-gateway 安装）
 uninstall.sh            # 卸载脚本
 cs-quick.sh             # 一键启动脚本
-config.env              # 配置文件（安装后生成，不入库）
+cc-gateway-setup.sh     # cc-gateway 独立安装脚本（手动使用）
+config.env              # 配置文件（安装引导自动生成，不入库）
 ```
 
 ## 注意事项
