@@ -49,6 +49,18 @@ Layer 4: 代理 IP 质量检测
 
 ## 快速开始
 
+### Windows 用户（推荐）
+
+```
+1. 克隆仓库到本地
+2. 右键 setup.bat -> 以管理员身份运行
+3. 脚本会自动安装 WSL2 + Ubuntu（已安装则跳过）
+4. 自动进入 WSL 交互式安装引导
+5. 安装完成后，打开 WSL 输入 cs 即可
+```
+
+### WSL / Linux 用户
+
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/alex1678747287/claude-env.git
@@ -155,6 +167,7 @@ CC_GATEWAY_PORT=8443
 ## 文件说明
 
 ```
+setup.bat               # Windows 一键引导（自动安装 WSL2 + Ubuntu）
 claude-safe.sh          # 主脚本：四层防护编排
 os-override.js          # Layer 1：Node.js/Bun os/fs/child_process hook（CJS）
 os-override.mjs         # Layer 1：ESM wrapper（Node.js 20+ ESM 入口兼容）

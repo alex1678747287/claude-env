@@ -49,6 +49,18 @@ Layer 4: Proxy IP quality check
 
 ## Quick Start
 
+### Windows Users (Recommended)
+
+```
+1. Clone the repo locally
+2. Right-click setup.bat -> Run as Administrator
+3. It auto-installs WSL2 + Ubuntu (skips if already installed)
+4. Automatically enters WSL interactive installer
+5. After setup, open WSL and type: cs
+```
+
+### WSL / Linux Users
+
 ```bash
 # 1. Clone
 git clone https://github.com/alex1678747287/claude-env.git
@@ -149,6 +161,7 @@ Binary-patched build replacing 18 telemetry URLs. Can be stacked with this tool.
 ## Files
 
 ```
+setup.bat               # Windows bootstrap (auto-installs WSL2 + Ubuntu)
 claude-safe.sh          # Main script: four-layer orchestration
 os-override.js          # Layer 1: Node.js/Bun os/fs/child_process hook (CJS)
 os-override.mjs         # Layer 1: ESM wrapper (Node.js 20+ ESM entry compat)
