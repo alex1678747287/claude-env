@@ -1,0 +1,5 @@
+config.env
+*.log
+.gateway.pid
+node_modules/
+.cc-gateway/
