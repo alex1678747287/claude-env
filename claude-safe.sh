@@ -282,22 +282,105 @@ setup_proxy_check() {
         return
     fi
 
-    local exit_ip exit_country exit_org ip_type
+    local exit_ip exit_country exit_org detected_tz
     exit_ip=$(echo "$ip_info" | grep -o '"ip"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     exit_country=$(echo "$ip_info" | grep -o '"country"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     exit_org=$(echo "$ip_info" | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+    detected_tz=$(echo "$ip_info" | grep -o '"timezone"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
 
     info "Proxy exit: $exit_ip ($exit_country) - $exit_org"
 
-    # Check if country matches timezone
-    local tz_region="${TARGET_TZ%%/*}"
+    if [ "$exit_country" = "CN" ]; then
+        error "Exit IP is in China! Proxy is not working correctly."
+        return
+    fi
+
+    # Auto-match identity to current exit IP country
+    local new_tz="" new_lang="" new_hostname=""
     case "$exit_country" in
-        US) [ "$tz_region" = "America" ] && PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) || warn "TZ mismatch: $TARGET_TZ but exit IP is US" ;;
-        JP) [ "$tz_region" = "Asia" ] && PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) || warn "TZ mismatch: $TARGET_TZ but exit IP is JP" ;;
-        SG|HK|TW|KR) PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) ;;
-        CN) error "Exit IP is in China! Proxy is not working correctly." ;;
-        *) PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) ;;
+        US)
+            new_tz="${detected_tz:-America/Los_Angeles}"
+            new_lang="en_US.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        JP)
+            new_tz="${detected_tz:-Asia/Tokyo}"
+            new_lang="ja_JP.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        SG)
+            new_tz="${detected_tz:-Asia/Singapore}"
+            new_lang="en_SG.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        GB|UK)
+            new_tz="${detected_tz:-Europe/London}"
+            new_lang="en_GB.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        DE)
+            new_tz="${detected_tz:-Europe/Berlin}"
+            new_lang="de_DE.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        KR)
+            new_tz="${detected_tz:-Asia/Seoul}"
+            new_lang="ko_KR.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        HK)
+            new_tz="${detected_tz:-Asia/Hong_Kong}"
+            new_lang="en_HK.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        TW)
+            new_tz="${detected_tz:-Asia/Taipei}"
+            new_lang="zh_TW.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        CA)
+            new_tz="${detected_tz:-America/Toronto}"
+            new_lang="en_CA.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        AU)
+            new_tz="${detected_tz:-Australia/Sydney}"
+            new_lang="en_AU.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        FR)
+            new_tz="${detected_tz:-Europe/Paris}"
+            new_lang="fr_FR.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
+        *)
+            # Use ipinfo timezone directly
+            new_tz="${detected_tz:-$TARGET_TZ}"
+            new_lang="en_US.UTF-8"
+            new_hostname="dev-workstation"
+            ;;
     esac
+
+    # Apply if different from current config
+    if [ -n "$new_tz" ] && [ "$new_tz" != "$TARGET_TZ" ]; then
+        warn "IP region changed: $TARGET_TZ -> $new_tz (auto-adjusting)"
+        TARGET_TZ="$new_tz"
+        export TZ="$new_tz"
+        export CLAUDE_TZ="$new_tz"
+    fi
+    if [ -n "$new_lang" ] && [ "$new_lang" != "$TARGET_LANG" ]; then
+        TARGET_LANG="$new_lang"
+        export LANG="$new_lang"
+        export LC_ALL="$new_lang"
+        export CLAUDE_LANG="$new_lang"
+    fi
+
+    # Pass updated values to os-override.js
+    export CLAUDE_HOSTNAME="${TARGET_HOSTNAME}"
+    export CLAUDE_USER="${TARGET_USER}"
+
+    PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
+    info "Identity matched to exit IP: $new_tz / $new_lang"
 
     # Warn about datacenter/shared IPs
     if echo "$exit_org" | grep -qi 'hosting\|datacenter\|cloud\|server\|vps\|digital.ocean\|vultr\|linode\|hetzner\|ovh'; then
