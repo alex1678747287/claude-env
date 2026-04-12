@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | [中文](README.md)
 
-WSL2 environment isolation tool with three-layer protection for safely using Claude Code / Cowork.
+WSL2 environment isolation tool with four-layer protection for safely using Claude Code / Cowork.
 
 ## Why
 
@@ -21,23 +21,30 @@ This data can identify your real environment and lead to account bans.
 
 ```
 Layer 1: Node.js/Bun os module hook (os-override.js)
-  ├── Monkey-patch os.hostname/release/cpus/totalmem/userInfo
+  ├── Monkey-patch os.hostname/release/cpus/totalmem/freemem/uptime/userInfo
+  ├── Intercept fs.readFileSync/readFile for /proc/version, /proc/cpuinfo, etc.
+  ├── Intercept child_process commands (uname, hostname, cat /proc/*)
   ├── Zero out network interface MAC addresses
   ├── Clean Windows variables from process.env
-  └── Supports both Node.js (NODE_OPTIONS) and Bun (BUN_CONFIG_PRELOAD)
+  └── Supports Node.js (--require + --import) and Bun (BUN_CONFIG_PRELOAD)
 
 Layer 2: Env vars + DNS + Hosts + Firewall (claude-safe.sh)
   ├── Block 20+ telemetry mechanisms (Datadog/Sentry/Statsig/OTEL/GrowthBook)
   ├── Remove 30+ WSL-leaked Windows environment variables
   ├── DNS leak prevention (avoid Windows host DNS)
   ├── /etc/hosts telemetry domain blocking
-  └── Optional iptables outbound whitelist
+  └── iptables outbound whitelist (custom chains, gateway port-restricted)
 
-Layer 3: cc-gateway API reverse proxy (optional)
+Layer 3: cc-gateway API reverse proxy (auto-start)
   ├── Rewrite 40+ environment dimensions and device_id
   ├── Strip x-anthropic-billing-header session fingerprint
   ├── Normalize process metrics (memory/heap size)
   └── Sanitize <env> block in system prompt
+
+Layer 4: Proxy IP quality check
+  ├── Detect exit IP country and timezone match
+  ├── Identify datacenter IP vs residential/ISP IP
+  └── Display protection score (0-10) at startup
 ```
 
 ## Quick Start

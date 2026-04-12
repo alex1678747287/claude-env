@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | 中文
 
-WSL2 环境隔离工具，三层防护体系，让你在受限地区安全使用 Claude Code / Cowork。
+WSL2 环境隔离工具，四层防护体系，让你在受限地区安全使用 Claude Code / Cowork。
 
 ## 为什么需要这个工具
 
@@ -21,23 +21,30 @@ WSL2 环境隔离工具，三层防护体系，让你在受限地区安全使用
 
 ```
 Layer 1: Node.js/Bun os 模块 Hook (os-override.js)
-  ├── monkey-patch os.hostname/release/cpus/totalmem/userInfo
+  ├── monkey-patch os.hostname/release/cpus/totalmem/freemem/uptime/userInfo
+  ├── 拦截 fs.readFileSync/readFile 清洗 /proc/version, /proc/cpuinfo 等
+  ├── 拦截 child_process 命令 (uname, hostname, cat /proc/*)
   ├── 清零网卡 MAC 地址
   ├── 清除 process.env 中的 Windows 变量
-  └── 同时支持 Node.js (NODE_OPTIONS) 和 Bun (BUN_CONFIG_PRELOAD)
+  └── 同时支持 Node.js (--require + --import) 和 Bun (BUN_CONFIG_PRELOAD)
 
 Layer 2: 环境变量 + DNS + Hosts + 防火墙 (claude-safe.sh)
   ├── 屏蔽 20+ 遥测机制 (Datadog/Sentry/Statsig/OTEL/GrowthBook)
   ├── 清除 30+ WSL 泄漏的 Windows 环境变量
   ├── DNS 防泄漏（避免走 Windows 宿主机 DNS）
   ├── /etc/hosts 屏蔽遥测域名
-  └── 可选 iptables 出站白名单
+  └── iptables 出站白名单（自定义 chain，gateway 限端口）
 
-Layer 3: cc-gateway API 反向代理（可选）
+Layer 3: cc-gateway API 反向代理（自动启动）
   ├── 重写 40+ 环境维度和 device_id
   ├── 剥离 x-anthropic-billing-header 会话指纹
   ├── 归一化进程指标（内存/堆大小）
   └── 清洗 system prompt 中的 <env> 块
+
+Layer 4: 代理 IP 质量检测
+  ├── 检测出口 IP 国家和时区匹配
+  ├── 识别数据中心 IP vs 住宅/ISP IP
+  └── 启动时显示防护评分 (0-10)
 ```
 
 ## 快速开始

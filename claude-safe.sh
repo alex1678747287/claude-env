@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# claude-safe.sh v2 - Claude Code environment isolation wrapper for WSL2
-# Three-layer protection: Node.js os hook + env/DNS/firewall + cc-gateway
+# claude-safe.sh v3 - Claude Code environment isolation wrapper for WSL2
+# Four-layer protection: Node.js os hook + env/DNS/firewall + cc-gateway + proxy quality
 # Usage: source ~/.claude-safe/claude-safe.sh && claude-run [claude args...]
 
 set -euo pipefail
@@ -21,6 +21,8 @@ ENABLE_FIREWALL="${CLAUDE_ENABLE_FIREWALL:-false}"
 ENABLE_GATEWAY="${CLAUDE_ENABLE_GATEWAY:-auto}"
 GATEWAY_PORT="${CC_GATEWAY_PORT:-8443}"
 DNS_SERVER="${CLAUDE_DNS:-1.1.1.1}"
+GATEWAY_DIR="${CC_GATEWAY_DIR:-$HOME/.cc-gateway}"
+PROXY_CHECK="${CLAUDE_PROXY_CHECK:-true}"
 
 # ============================================================
 # Color output
@@ -32,6 +34,10 @@ info()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[x]${NC} $*"; }
 dim()   { echo -e "${DIM}    $*${NC}"; }
+
+# Protection score tracker
+PROTECTION_SCORE=0
+PROTECTION_MAX=10
 
 # ============================================================
 # Layer 1: Node.js os module hook
@@ -61,6 +67,7 @@ setup_node_hook() {
         export CLAUDE_HOSTNAME="$TARGET_HOSTNAME"
         export CLAUDE_USER="$TARGET_USER"
         info "Node.js/Bun os hook loaded (CJS --require + ESM --import)"
+        PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
     else
         warn "os-override.js not found - Node.js level disguise disabled"
         dim "Copy os-override.js to $SCRIPT_DIR/"
@@ -105,6 +112,7 @@ setup_telemetry_block() {
     export NEXT_TELEMETRY_DISABLED=1
 
     info "Telemetry env vars blocked (20+ mechanisms)"
+    PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
 }
 
 # ============================================================
@@ -247,10 +255,57 @@ setup_proxy() {
     # Test proxy connectivity (use neutral URL to avoid exposing Claude usage to proxy logs)
     if command -v curl &>/dev/null; then
         if curl -s --connect-timeout 3 --proxy "$proxy_url" https://httpbin.org/ip -o /dev/null 2>/dev/null; then
+            PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
             info "Proxy connectivity OK: $proxy_url"
         else
             warn "Proxy not reachable at $proxy_url"
         fi
+    fi
+}
+
+# ============================================================
+# Layer 4: Proxy IP quality check (shared IP detection)
+# ============================================================
+setup_proxy_check() {
+    if [ "$PROXY_CHECK" != "true" ]; then
+        return
+    fi
+
+    local proxy_url="${PROXY_PROTOCOL}://${PROXY_HOST}:${PROXY_PORT}"
+
+    # Get exit IP info via proxy
+    local ip_info
+    ip_info=$(curl -s --connect-timeout 5 --proxy "$proxy_url" "https://ipinfo.io/json" 2>/dev/null || echo "")
+
+    if [ -z "$ip_info" ]; then
+        warn "Could not check proxy IP quality (ipinfo.io unreachable)"
+        return
+    fi
+
+    local exit_ip exit_country exit_org ip_type
+    exit_ip=$(echo "$ip_info" | grep -o '"ip"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+    exit_country=$(echo "$ip_info" | grep -o '"country"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+    exit_org=$(echo "$ip_info" | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+
+    info "Proxy exit: $exit_ip ($exit_country) - $exit_org"
+
+    # Check if country matches timezone
+    local tz_region="${TARGET_TZ%%/*}"
+    case "$exit_country" in
+        US) [ "$tz_region" = "America" ] && PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) || warn "TZ mismatch: $TARGET_TZ but exit IP is US" ;;
+        JP) [ "$tz_region" = "Asia" ] && PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) || warn "TZ mismatch: $TARGET_TZ but exit IP is JP" ;;
+        SG|HK|TW|KR) PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) ;;
+        CN) error "Exit IP is in China! Proxy is not working correctly." ;;
+        *) PROTECTION_SCORE=$((PROTECTION_SCORE + 1)) ;;
+    esac
+
+    # Warn about datacenter/shared IPs
+    if echo "$exit_org" | grep -qi 'hosting\|datacenter\|cloud\|server\|vps\|digital.ocean\|vultr\|linode\|hetzner\|ovh'; then
+        warn "Datacenter IP detected - higher risk of shared usage"
+        dim "Residential/ISP proxy recommended for lower detection risk"
+    else
+        PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
+        info "Proxy IP type: residential/ISP (good)"
     fi
 }
 
@@ -269,8 +324,10 @@ setup_firewall() {
 
     if [ -f "$fw_script" ]; then
         warn "Activating iptables firewall (requires sudo)..."
-        sudo bash "$fw_script" "$PROXY_HOST" "$PROXY_PORT" "$DNS_SERVER" && \
-            info "Firewall active: only proxy + essential domains allowed" || \
+        sudo bash "$fw_script" "$PROXY_HOST" "$PROXY_PORT" "$DNS_SERVER" && {
+            PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
+            info "Firewall active: only proxy + essential domains allowed"
+        } || \
             warn "Firewall setup failed (iptables may not be available in WSL2)"
     else
         warn "iptables-whitelist.sh not found"
@@ -278,7 +335,7 @@ setup_firewall() {
 }
 
 # ============================================================
-# Layer 3: cc-gateway detection and integration
+# Layer 3: cc-gateway auto-start and integration
 # ============================================================
 setup_gateway() {
     local gateway_url="http://localhost:$GATEWAY_PORT"
@@ -287,16 +344,41 @@ setup_gateway() {
         return
     fi
 
-    # Check if cc-gateway is running
+    # Check if cc-gateway is already running
     if curl -s --connect-timeout 2 "$gateway_url/health" &>/dev/null 2>&1 || \
        curl -s --connect-timeout 2 "$gateway_url" &>/dev/null 2>&1; then
         export ANTHROPIC_BASE_URL="$gateway_url"
-        info "cc-gateway detected at $gateway_url - routing API through gateway"
+        PROTECTION_SCORE=$((PROTECTION_SCORE + 3))
+        info "cc-gateway active at $gateway_url"
         dim "Device fingerprint, billing header, env dimensions will be rewritten"
-    elif [ "$ENABLE_GATEWAY" = "true" ]; then
-        warn "cc-gateway not running at $gateway_url"
-        dim "Start it: ~/.cc-gateway/start.sh"
-        dim "Or install: bash ~/.claude-safe/cc-gateway-setup.sh"
+        return
+    fi
+
+    # Not running - try to auto-start if installed
+    if [ -f "$GATEWAY_DIR/start.sh" ]; then
+        info "Starting cc-gateway..."
+        bash "$GATEWAY_DIR/start.sh" &>/dev/null
+        # Wait for startup
+        local retries=0
+        while [ $retries -lt 5 ]; do
+            sleep 1
+            if curl -s --connect-timeout 1 "$gateway_url/health" &>/dev/null 2>&1 || \
+               curl -s --connect-timeout 1 "$gateway_url" &>/dev/null 2>&1; then
+                export ANTHROPIC_BASE_URL="$gateway_url"
+                PROTECTION_SCORE=$((PROTECTION_SCORE + 3))
+                info "cc-gateway started at $gateway_url"
+                return
+            fi
+            retries=$((retries + 1))
+        done
+        warn "cc-gateway failed to start within 5s"
+    elif [ "$ENABLE_GATEWAY" = "true" ] || [ "$ENABLE_GATEWAY" = "auto" ]; then
+        # Not installed - offer to install
+        if [ -f "$SCRIPT_DIR/cc-gateway-setup.sh" ] || [ -f "$HOME/.claude-safe/cc-gateway-setup.sh" ]; then
+            warn "cc-gateway not installed (recommended for maximum protection)"
+            dim "Install: bash ~/.claude-safe/cc-gateway-setup.sh"
+            dim "It rewrites device_id, billing header, and 40+ env dimensions"
+        fi
     fi
 }
 
@@ -318,25 +400,24 @@ setup_browser_auth() {
 }
 
 # ============================================================
-# Verification
+# Verification & Protection Score
 # ============================================================
 verify_env() {
     echo ""
     echo -e "${CYAN}========== Environment Status ==========${NC}"
-    echo -e "  Platform:    $(uname -s) $(uname -m)"
-    echo -e "  Kernel:      $(uname -r)"
     echo -e "  Hostname:    ${HOSTNAME:-unknown}"
     echo -e "  Timezone:    ${TZ:-unknown}"
     echo -e "  Locale:      ${LANG:-unknown}"
     echo -e "  Proxy:       ${HTTPS_PROXY:-not set}"
-    echo -e "  Gateway:     ${ANTHROPIC_BASE_URL:-direct}"
+    echo -e "  Gateway:     ${ANTHROPIC_BASE_URL:-direct (no cc-gateway)}"
     echo -e "  Browser:     ${BROWSER:-not set}"
-    echo -e "  Node hook:   $([ -n "${NODE_OPTIONS:-}" ] && echo 'active' || echo 'inactive')"
+    echo -e "  Node hook:   $([ -n "${NODE_OPTIONS:-}" ] && echo 'active (CJS+ESM)' || echo 'inactive')"
+    echo -e "  Firewall:    $([ "$ENABLE_FIREWALL" = "true" ] && echo 'active' || echo 'inactive')"
     echo -e "  Telemetry:   BLOCKED"
 
     # Leak check
     local leaks=""
-    for var in WSLENV WSL_DISTRO_NAME WINDIR USERPROFILE WT_SESSION DISPLAY; do
+    for var in WSLENV WSL_DISTRO_NAME WINDIR USERPROFILE WT_SESSION DISPLAY OS PROCESSOR_ARCHITECTURE; do
         [ -n "${!var:-}" ] && leaks+="$var "
     done
 
@@ -353,7 +434,34 @@ verify_env() {
 
     # /proc filesystem leak check
     if [ -f /proc/version ] && grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
-        echo -e "  ${YELLOW}/proc:       WSL signature in /proc/version (direct file reads may leak)${NC}"
+        echo -e "  ${YELLOW}/proc:       WSL signature in /proc/version (Node hook intercepts fs.readFile)${NC}"
+    fi
+
+    # Protection score display
+    echo -e "${CYAN}========== Protection Score ============${NC}"
+    local bar=""
+    local i
+    for ((i=0; i<PROTECTION_SCORE; i++)); do bar+="█"; done
+    for ((i=PROTECTION_SCORE; i<PROTECTION_MAX; i++)); do bar+="░"; done
+
+    local color="$RED"
+    local level="LOW"
+    if [ "$PROTECTION_SCORE" -ge 8 ]; then
+        color="$GREEN"; level="MAXIMUM"
+    elif [ "$PROTECTION_SCORE" -ge 6 ]; then
+        color="$GREEN"; level="HIGH"
+    elif [ "$PROTECTION_SCORE" -ge 4 ]; then
+        color="$YELLOW"; level="MEDIUM"
+    fi
+
+    echo -e "  Score:       ${color}${bar} ${PROTECTION_SCORE}/${PROTECTION_MAX} (${level})${NC}"
+
+    # Recommendations for missing points
+    if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
+        echo -e "  ${DIM}+3 Install cc-gateway: bash ~/.claude-safe/cc-gateway-setup.sh${NC}"
+    fi
+    if [ "$ENABLE_FIREWALL" != "true" ]; then
+        echo -e "  ${DIM}+1 Enable firewall: CLAUDE_ENABLE_FIREWALL=true in config.env${NC}"
     fi
 
     echo -e "${CYAN}========================================${NC}"
@@ -364,8 +472,10 @@ verify_env() {
 # Main setup
 # ============================================================
 claude_setup() {
-    echo -e "${CYAN}Claude Code Safe Environment v2${NC}"
+    echo -e "${CYAN}Claude Code Safe Environment v3${NC}"
     echo ""
+
+    PROTECTION_SCORE=0
 
     setup_node_hook
     setup_telemetry_block
@@ -373,6 +483,7 @@ claude_setup() {
     setup_dns
     setup_hosts_block
     setup_proxy
+    setup_proxy_check
     setup_firewall
     setup_gateway
     setup_browser_auth

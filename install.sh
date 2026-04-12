@@ -164,10 +164,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
     # Create with restrictive permissions first to avoid race condition (M2)
     install -m 600 /dev/null "$CONFIG_FILE"
     cat > "$CONFIG_FILE" << CONF
-# Claude Safe Environment v2 Configuration
+# Claude Safe Environment v3 Configuration
 
 # ============================================================
 # Proxy (your local proxy, e.g., Clash/V2Ray on Windows host)
+# Residential/ISP proxy recommended over datacenter for lower risk
 # ============================================================
 CLAUDE_PROXY_HOST=$WIN_HOST_IP
 CLAUDE_PROXY_PORT=7890
@@ -187,20 +188,27 @@ CLAUDE_USER=developer
 CLAUDE_DNS=1.1.1.1
 
 # ============================================================
-# Firewall - iptables outbound whitelist (optional)
+# Firewall - iptables outbound whitelist
 # Only allows traffic to proxy + essential Claude domains
-# Requires sudo. Set to true for maximum isolation.
+# Requires sudo. Recommended for maximum isolation.
 # ============================================================
-CLAUDE_ENABLE_FIREWALL=false
+CLAUDE_ENABLE_FIREWALL=true
 
 # ============================================================
-# cc-gateway - API identity proxy (optional, recommended)
+# cc-gateway - API identity proxy (recommended)
 # Rewrites device fingerprint, billing header, env dimensions
-# Set to: auto (detect), true (require), false (skip)
+# Set to: auto (auto-start if installed), true (require), false (skip)
 # Install: bash ~/.claude-safe/cc-gateway-setup.sh
 # ============================================================
 CLAUDE_ENABLE_GATEWAY=auto
 CC_GATEWAY_PORT=8443
+
+# ============================================================
+# Proxy IP quality check
+# Checks exit IP country, type (residential vs datacenter)
+# Set to false to skip (saves ~2s startup time)
+# ============================================================
+CLAUDE_PROXY_CHECK=true
 CONF
     info "Config created: $CONFIG_FILE"
     warn "Edit proxy settings: vim $CONFIG_FILE"
@@ -237,13 +245,13 @@ echo -e "  1. Edit config:  ${CYAN}vim $CONFIG_FILE${NC}"
 echo -e "  2. Reload shell: ${CYAN}source $SHELL_RC${NC}"
 echo -e "  3. Launch:       ${CYAN}cs${NC}"
 echo ""
-echo "Protection layers:"
-echo -e "  ${GREEN}Layer 1${NC}: Node.js os hook (auto)     - patches os.hostname/release/cpus/mem"
-echo -e "  ${GREEN}Layer 2${NC}: Env + DNS + hosts (auto)   - blocks 20+ telemetry mechanisms"
-echo -e "  ${GREEN}Layer 3${NC}: cc-gateway (optional)      - rewrites API fingerprint"
+echo "Protection layers (all auto-enabled):"
+echo -e "  ${GREEN}Layer 1${NC}: Node.js os hook          - patches os.*/fs.*/child_process.*"
+echo -e "  ${GREEN}Layer 2${NC}: Env + DNS + hosts + FW    - blocks 20+ telemetry, iptables whitelist"
+echo -e "  ${GREEN}Layer 3${NC}: cc-gateway (install below) - rewrites API fingerprint + billing header"
+echo -e "  ${GREEN}Layer 4${NC}: Proxy IP quality check    - verifies exit IP country + type"
 echo ""
-echo "Optional upgrades:"
-echo -e "  ${CYAN}bash $INSTALL_DIR/cc-gateway-setup.sh${NC}  # Install cc-gateway"
-echo -e "  ${CYAN}CLAUDE_ENABLE_FIREWALL=true${NC}            # Enable iptables whitelist"
-echo -e "  ${CYAN}https://github.com/ultrmgns/claude-private${NC}  # Binary-patched build"
+echo "Recommended next steps:"
+echo -e "  ${CYAN}bash $INSTALL_DIR/cc-gateway-setup.sh${NC}  # Install cc-gateway (+3 protection)"
+echo -e "  Use residential/ISP proxy instead of datacenter VPS"
 echo ""
