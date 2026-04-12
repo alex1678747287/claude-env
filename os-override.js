@@ -68,11 +68,27 @@ if (typeof os.version === 'function') {
 }
 
 // ============================================================
-// 5. Patch os.totalmem() - normalize to standard value
+// 5. Patch os.totalmem() / os.freemem() - normalize to standard values
 // ============================================================
 const _origTotalmem = os.totalmem;
 os.totalmem = function () {
   return FAKE_TOTALMEM;
+};
+
+const _origFreemem = os.freemem;
+os.freemem = function () {
+  const real = _origFreemem.call(os);
+  // Cap freemem to be consistent with fake totalmem (avoid freemem > totalmem)
+  return Math.min(real, Math.floor(FAKE_TOTALMEM * 0.45));
+};
+
+// ============================================================
+// 5b. Patch os.uptime() - add random offset to prevent time fingerprinting
+// ============================================================
+const _origUptime = os.uptime;
+const UPTIME_OFFSET = Math.floor(Math.random() * 86400 * 7); // random 0-7 days
+os.uptime = function () {
+  return _origUptime.call(os) + UPTIME_OFFSET;
 };
 
 // ============================================================
@@ -146,3 +162,180 @@ if (process.env.PATH) {
 process.env.HOSTNAME = FAKE_HOSTNAME;
 process.env.HOST = FAKE_HOSTNAME;
 process.env.LOGNAME = FAKE_USER;
+process.env.USER = FAKE_USER;
+
+// ============================================================
+// 10. Patch fs.readFileSync / fs.readFile - intercept /proc leaks
+//     /proc/version, /proc/cpuinfo, /proc/self/cgroup, /proc/mounts
+//     all contain WSL/Microsoft identifiers that bypass os.* hooks
+// ============================================================
+const fs = require('fs');
+
+const PROC_OVERRIDES = {
+  '/proc/version': `Linux version ${FAKE_KERNEL} (gcc (Ubuntu 13.2.0-23ubuntu4) 13.2.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #58-Ubuntu SMP PREEMPT_DYNAMIC\n`,
+  '/proc/sys/kernel/osrelease': `${FAKE_KERNEL}\n`,
+};
+
+// Lazy-generate /proc/cpuinfo from fake CPU info
+function fakeCpuinfo() {
+  const count = (os.cpus ? os.cpus() : [{}]).length || 8;
+  let out = '';
+  for (let i = 0; i < count; i++) {
+    out += `processor\t: ${i}\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\n`;
+    out += `model name\t: AMD Ryzen 7 5800X 8-Core Processor\ncpu MHz\t\t: 3800.000\n`;
+    out += `cache size\t: 32768 KB\nphysical id\t: 0\ncpu cores\t: ${count}\n\n`;
+  }
+  return out;
+}
+
+function shouldIntercept(filepath) {
+  if (typeof filepath !== 'string') {
+    try { filepath = filepath.toString(); } catch (_) { return null; }
+  }
+  if (PROC_OVERRIDES[filepath]) return PROC_OVERRIDES[filepath];
+  if (filepath === '/proc/cpuinfo') return fakeCpuinfo();
+  // Filter WSL signatures from /proc/self/cgroup and /proc/mounts
+  if (filepath === '/proc/self/cgroup' || filepath === '/proc/mounts') return '__FILTER__';
+  return null;
+}
+
+function filterProcContent(filepath, content) {
+  const str = typeof content === 'string' ? content : content.toString('utf8');
+  // Remove lines containing WSL/Microsoft/Windows/mnt/c identifiers
+  return str.split('\n')
+    .filter(l => !/microsoft|wsl|\/mnt\/[a-z]|windows|drvfs/i.test(l))
+    .join('\n');
+}
+
+const _origReadFileSync = fs.readFileSync;
+fs.readFileSync = function (filepath, options) {
+  const override = shouldIntercept(filepath);
+  if (override === '__FILTER__') {
+    const real = _origReadFileSync.call(fs, filepath, options);
+    return filterProcContent(filepath, real);
+  }
+  if (override) {
+    // Respect encoding option
+    if (options && (options === 'utf8' || options === 'utf-8' || options.encoding)) {
+      return override;
+    }
+    return Buffer.from(override);
+  }
+  return _origReadFileSync.call(fs, filepath, options);
+};
+
+const _origReadFile = fs.readFile;
+fs.readFile = function (filepath, options, callback) {
+  if (typeof options === 'function') { callback = options; options = undefined; }
+  const override = shouldIntercept(filepath);
+  if (override === '__FILTER__') {
+    return _origReadFile.call(fs, filepath, options, function (err, data) {
+      if (err) return callback(err);
+      callback(null, filterProcContent(filepath, data));
+    });
+  }
+  if (override) {
+    const result = (options && (options === 'utf8' || options === 'utf-8' || options.encoding))
+      ? override : Buffer.from(override);
+    return process.nextTick(() => callback(null, result));
+  }
+  return _origReadFile.call(fs, filepath, options, callback);
+};
+
+// Also patch fs.promises.readFile
+if (fs.promises) {
+  const _origReadFilePromise = fs.promises.readFile;
+  fs.promises.readFile = async function (filepath, options) {
+    const override = shouldIntercept(filepath);
+    if (override === '__FILTER__') {
+      const real = await _origReadFilePromise.call(fs.promises, filepath, options);
+      return filterProcContent(filepath, real);
+    }
+    if (override) {
+      if (options && (options === 'utf8' || options === 'utf-8' || options.encoding)) {
+        return override;
+      }
+      return Buffer.from(override);
+    }
+    return _origReadFilePromise.call(fs.promises, filepath, options);
+  };
+}
+
+// ============================================================
+// 11. Patch child_process - intercept uname, hostname, cat /proc/*
+//     These commands bypass os.* hooks entirely
+// ============================================================
+const cp = require('child_process');
+
+const COMMAND_OVERRIDES = {
+  'uname -a': `Linux ${FAKE_HOSTNAME} ${FAKE_KERNEL} #58-Ubuntu SMP PREEMPT_DYNAMIC x86_64 GNU/Linux`,
+  'uname -r': FAKE_KERNEL,
+  'uname -n': FAKE_HOSTNAME,
+  'uname -s': 'Linux',
+  'uname -m': 'x86_64',
+  'uname -o': 'GNU/Linux',
+  'uname -v': '#58-Ubuntu SMP PREEMPT_DYNAMIC',
+  uname: `Linux ${FAKE_HOSTNAME} ${FAKE_KERNEL} #58-Ubuntu SMP PREEMPT_DYNAMIC x86_64 GNU/Linux`,
+  hostname: FAKE_HOSTNAME,
+  'hostname -f': FAKE_HOSTNAME,
+  'cat /proc/version': PROC_OVERRIDES['/proc/version'].trim(),
+  'cat /proc/sys/kernel/osrelease': FAKE_KERNEL,
+  'hostnamectl': `   Static hostname: ${FAKE_HOSTNAME}\n         Icon name: computer-desktop\n           Chassis: desktop\n  Operating System: Ubuntu 24.04.1 LTS\n            Kernel: Linux ${FAKE_KERNEL}\n      Architecture: x86-64`,
+};
+
+function matchCommand(cmd) {
+  const trimmed = cmd.trim();
+  // Exact match
+  if (COMMAND_OVERRIDES[trimmed]) return COMMAND_OVERRIDES[trimmed];
+  // Match commands that read /proc files we intercept
+  const catMatch = trimmed.match(/^cat\s+(\/proc\/\S+)/);
+  if (catMatch) {
+    const override = shouldIntercept(catMatch[1]);
+    if (override && override !== '__FILTER__') return override.trim();
+  }
+  return null;
+}
+
+const _origExecSync = cp.execSync;
+cp.execSync = function (command, options) {
+  const faked = matchCommand(String(command));
+  if (faked !== null) {
+    const result = faked + '\n';
+    if (options && options.encoding) return result;
+    return Buffer.from(result);
+  }
+  return _origExecSync.call(cp, command, options);
+};
+
+const _origExec = cp.exec;
+cp.exec = function (command, options, callback) {
+  if (typeof options === 'function') { callback = options; options = undefined; }
+  const faked = matchCommand(String(command));
+  if (faked !== null) {
+    const result = faked + '\n';
+    if (callback) process.nextTick(() => callback(null, result, ''));
+    // Return a minimal ChildProcess-like object
+    const EventEmitter = require('events');
+    const fake = new EventEmitter();
+    fake.stdout = new EventEmitter(); fake.stderr = new EventEmitter();
+    fake.stdin = { write() {}, end() {} };
+    fake.pid = 0; fake.kill = () => {};
+    process.nextTick(() => {
+      fake.stdout.emit('data', result);
+      fake.emit('close', 0);
+    });
+    return fake;
+  }
+  return _origExec.call(cp, command, options, callback);
+};
+
+const _origSpawnSync = cp.spawnSync;
+cp.spawnSync = function (command, args, options) {
+  const fullCmd = args ? `${command} ${args.join(' ')}` : String(command);
+  const faked = matchCommand(fullCmd);
+  if (faked !== null) {
+    const buf = Buffer.from(faked + '\n');
+    return { stdout: buf, stderr: Buffer.alloc(0), status: 0, signal: null, pid: 0, output: [null, buf, Buffer.alloc(0)] };
+  }
+  return _origSpawnSync.call(cp, command, args, options);
+};

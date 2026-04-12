@@ -140,10 +140,12 @@ CLAUDE_ENABLE_FIREWALL=true
 
 ```
 claude-safe.sh          # 主脚本：三层防护编排
-os-override.js          # Layer 1：Node.js/Bun os 模块 hook
+os-override.js          # Layer 1：Node.js/Bun os 模块 hook（CJS）
+os-override.mjs         # Layer 1：ESM wrapper（Node.js 20+ ESM 入口兼容）
 iptables-whitelist.sh   # Layer 2：iptables 出站白名单
 cc-gateway-setup.sh     # Layer 3：cc-gateway 安装脚本
 install.sh              # 一键安装脚本
+uninstall.sh            # 卸载脚本
 cs-quick.sh             # 一键启动脚本
 config.env              # 配置文件（安装后生成，不入库）
 ```

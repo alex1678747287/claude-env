@@ -72,7 +72,7 @@ fi
 # ============================================================
 mkdir -p "$INSTALL_DIR"
 
-for f in claude-safe.sh os-override.js iptables-whitelist.sh cc-gateway-setup.sh; do
+for f in claude-safe.sh os-override.js os-override.mjs iptables-whitelist.sh cc-gateway-setup.sh; do
     if [ -f "$SCRIPT_DIR/$f" ]; then
         cp "$SCRIPT_DIR/$f" "$INSTALL_DIR/$f"
         chmod +x "$INSTALL_DIR/$f" 2>/dev/null || true
@@ -161,6 +161,8 @@ if [ -f /etc/resolv.conf ]; then
 fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
+    # Create with restrictive permissions first to avoid race condition (M2)
+    install -m 600 /dev/null "$CONFIG_FILE"
     cat > "$CONFIG_FILE" << CONF
 # Claude Safe Environment v2 Configuration
 
@@ -201,7 +203,6 @@ CLAUDE_ENABLE_GATEWAY=auto
 CC_GATEWAY_PORT=8443
 CONF
     info "Config created: $CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
     warn "Edit proxy settings: vim $CONFIG_FILE"
 else
     info "Config exists: $CONFIG_FILE"

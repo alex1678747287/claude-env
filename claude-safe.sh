@@ -38,24 +38,29 @@ dim()   { echo -e "${DIM}    $*${NC}"; }
 # ============================================================
 setup_node_hook() {
     local override_js="$SCRIPT_DIR/os-override.js"
+    local override_mjs="$SCRIPT_DIR/os-override.mjs"
     if [ ! -f "$override_js" ]; then
-        # Try installed location
         override_js="$HOME/.claude-safe/os-override.js"
+        override_mjs="$HOME/.claude-safe/os-override.mjs"
     fi
 
     if [ -f "$override_js" ]; then
-        # Inject via NODE_OPTIONS --require (Node.js)
+        # Inject via NODE_OPTIONS --require (CJS) + --import (ESM)
+        local node_opts="--require $override_js"
+        if [ -f "$override_mjs" ]; then
+            node_opts="$node_opts --import file://$override_mjs"
+        fi
         if [ -n "${NODE_OPTIONS:-}" ]; then
-            export NODE_OPTIONS="--require $override_js $NODE_OPTIONS"
+            export NODE_OPTIONS="$node_opts $NODE_OPTIONS"
         else
-            export NODE_OPTIONS="--require $override_js"
+            export NODE_OPTIONS="$node_opts"
         fi
         # Also set Bun preload (Claude Code may run under Bun runtime)
         export BUN_CONFIG_PRELOAD="$override_js"
         # Pass config to os-override.js via env
         export CLAUDE_HOSTNAME="$TARGET_HOSTNAME"
         export CLAUDE_USER="$TARGET_USER"
-        info "Node.js/Bun os hook loaded (hostname/user/cpu/mem/kernel patched)"
+        info "Node.js/Bun os hook loaded (CJS --require + ESM --import)"
     else
         warn "os-override.js not found - Node.js level disguise disabled"
         dim "Copy os-override.js to $SCRIPT_DIR/"
@@ -239,9 +244,9 @@ setup_proxy() {
     export NO_PROXY="localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
     export no_proxy="$NO_PROXY"
 
-    # Test proxy connectivity (skip geolocation by default to avoid fingerprinting)
+    # Test proxy connectivity (use neutral URL to avoid exposing Claude usage to proxy logs)
     if command -v curl &>/dev/null; then
-        if curl -s --connect-timeout 3 --proxy "$proxy_url" https://api.anthropic.com -o /dev/null 2>/dev/null; then
+        if curl -s --connect-timeout 3 --proxy "$proxy_url" https://httpbin.org/ip -o /dev/null 2>/dev/null; then
             info "Proxy connectivity OK: $proxy_url"
         else
             warn "Proxy not reachable at $proxy_url"

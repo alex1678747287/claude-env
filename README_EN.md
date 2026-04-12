@@ -131,10 +131,12 @@ Binary-patched build replacing 18 telemetry URLs. See [claude-private](https://g
 
 ```
 claude-safe.sh          # Main script: three-layer orchestration
-os-override.js          # Layer 1: Node.js/Bun os module hook
+os-override.js          # Layer 1: Node.js/Bun os module hook (CJS)
+os-override.mjs         # Layer 1: ESM wrapper (Node.js 20+ ESM entry compat)
 iptables-whitelist.sh   # Layer 2: iptables outbound whitelist
 cc-gateway-setup.sh     # Layer 3: cc-gateway installer
 install.sh              # One-command installer
+uninstall.sh            # Uninstaller
 cs-quick.sh             # One-command launcher
 config.env              # Config (generated after install, gitignored)
 ```
