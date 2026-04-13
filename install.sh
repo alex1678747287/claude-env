@@ -330,6 +330,12 @@ TELEMETRY_DOMAINS=(
     "statsig.anthropic.com"
     "featuregates.org"
     "api.statsig.com"
+    "statsig.com"
+    "api.growthbook.io"
+    "cdn.growthbook.io"
+    "amplitude.com"
+    "api.amplitude.com"
+    "api2.amplitude.com"
 )
 
 missing=0
@@ -576,6 +582,12 @@ export DD_TRACE_ENABLED=false DD_INSTRUMENTATION_TELEMETRY_ENABLED=false DD_REMO
 export SENTRY_DSN="" SENTRY_ENVIRONMENT=""
 export GROWTHBOOK_CLIENT_KEY="" STATSIG_CLIENT_KEY=""
 
+# Git identity (session-only, does not modify ~/.gitconfig)
+export GIT_AUTHOR_NAME="${CLAUDE_USER:-developer}"
+export GIT_AUTHOR_EMAIL="${CLAUDE_USER:-developer}@users.noreply.github.com"
+export GIT_COMMITTER_NAME="${CLAUDE_USER:-developer}"
+export GIT_COMMITTER_EMAIL="${CLAUDE_USER:-developer}@users.noreply.github.com"
+
 # cs = launch Claude Code with full four-layer protection
 alias cs="source ~/.claude-safe/claude-safe.sh && claude-run"
 SHELLBLOCK
@@ -642,6 +654,12 @@ export OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none OTEL_TRACES_EXPORTER=n
 export DD_TRACE_ENABLED=false DD_INSTRUMENTATION_TELEMETRY_ENABLED=false DD_REMOTE_CONFIGURATION_ENABLED=false
 export SENTRY_DSN="" SENTRY_ENVIRONMENT=""
 export GROWTHBOOK_CLIENT_KEY="" STATSIG_CLIENT_KEY=""
+
+# Git identity (session-only, does not modify ~/.gitconfig)
+export GIT_AUTHOR_NAME="${CLAUDE_USER:-developer}"
+export GIT_AUTHOR_EMAIL="${CLAUDE_USER:-developer}@users.noreply.github.com"
+export GIT_COMMITTER_NAME="${CLAUDE_USER:-developer}"
+export GIT_COMMITTER_EMAIL="${CLAUDE_USER:-developer}@users.noreply.github.com"
 
 # cs = launch Claude Code with full four-layer protection
 alias cs="source ~/.claude-safe/claude-safe.sh && claude-run"

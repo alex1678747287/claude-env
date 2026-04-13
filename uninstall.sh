@@ -11,7 +11,7 @@ INSTALL_DIR="$HOME/.claude-safe"
 echo -e "${CYAN}Claude Code Safe Environment - Uninstaller${NC}"
 echo ""
 
-# 1. Remove iptables rules
+# 1. Remove iptables rules (IPv4 + IPv6)
 if command -v iptables &>/dev/null && sudo iptables -L CLAUDE-OUT &>/dev/null 2>&1; then
     warn "Removing iptables rules..."
     sudo iptables -D OUTPUT -j CLAUDE-BLOCK 2>/dev/null || true
@@ -23,7 +23,13 @@ if command -v iptables &>/dev/null && sudo iptables -L CLAUDE-OUT &>/dev/null 2>
     if command -v ipset &>/dev/null; then
         sudo ipset destroy claude-allowed 2>/dev/null || true
     fi
-    info "iptables rules removed"
+    info "IPv4 iptables rules removed"
+fi
+if command -v ip6tables &>/dev/null && sudo ip6tables -L CLAUDE-OUT6 &>/dev/null 2>&1; then
+    sudo ip6tables -D OUTPUT -j CLAUDE-OUT6 2>/dev/null || true
+    sudo ip6tables -F CLAUDE-OUT6 2>/dev/null || true
+    sudo ip6tables -X CLAUDE-OUT6 2>/dev/null || true
+    info "IPv6 iptables rules removed"
 fi
 
 # 2. Remove /etc/hosts entries
@@ -34,13 +40,16 @@ if grep -q "claude-safe installer" /etc/hosts 2>/dev/null; then
     info "/etc/hosts cleaned"
 fi
 
-# 3. Remove shell aliases
+# 3. Remove shell block (handles both old alias-only and new full SHELLBLOCK)
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$rc" ] && grep -q "claude-safe" "$rc"; then
-        sed -i '/Claude Code Safe Environment/d' "$rc"
+    if [ -f "$rc" ] && grep -q "Claude Code Safe Environment" "$rc"; then
+        # Delete from marker to the alias cs= line (inclusive)
+        sed -i '/# Claude Code Safe Environment/,/^alias cs=/d' "$rc"
+        # Also clean any leftover old-style aliases
         sed -i '/claude-safe/d' "$rc"
-        sed -i '/alias cs=/d' "$rc"
-        info "Aliases removed from $rc"
+        # Remove consecutive blank lines
+        sed -i '/^$/N;/^\n$/d' "$rc"
+        info "Shell block removed from $rc"
     fi
 done
 
@@ -51,11 +60,23 @@ if [ -d "$INSTALL_DIR" ]; then
     info "Install directory removed"
 fi
 
-# 5. Remove cc-gateway if installed
+# 5. Stop and optionally remove cc-gateway
 if [ -d "$HOME/.cc-gateway" ]; then
-    warn "cc-gateway found at ~/.cc-gateway"
-    echo -e "  Remove it manually: ${CYAN}rm -rf ~/.cc-gateway${NC}"
-    echo -e "  Stop service: ${CYAN}systemctl --user stop cc-gateway${NC}"
+    if [ -f "$HOME/.cc-gateway/.gateway.pid" ]; then
+        kill "$(cat "$HOME/.cc-gateway/.gateway.pid")" 2>/dev/null && info "cc-gateway stopped" || true
+        rm -f "$HOME/.cc-gateway/.gateway.pid"
+    fi
+    systemctl --user stop cc-gateway 2>/dev/null || true
+    systemctl --user disable cc-gateway 2>/dev/null || true
+    warn "cc-gateway directory kept at ~/.cc-gateway"
+    echo -e "  Remove manually: ${CYAN}rm -rf ~/.cc-gateway${NC}"
+fi
+
+# 6. Remove homedir symlink if created
+FAKE_USER="${CLAUDE_USER:-developer}"
+if [ -L "/home/$FAKE_USER" ]; then
+    sudo rm -f "/home/$FAKE_USER" 2>/dev/null || true
+    info "Symlink /home/$FAKE_USER removed"
 fi
 
 echo ""

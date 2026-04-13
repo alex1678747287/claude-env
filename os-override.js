@@ -163,6 +163,37 @@ process.env.HOSTNAME = FAKE_HOSTNAME;
 process.env.HOST = FAKE_HOSTNAME;
 process.env.LOGNAME = FAKE_USER;
 process.env.USER = FAKE_USER;
+process.env.HOME = `/home/${FAKE_USER}`;
+
+// ============================================================
+// 9b. Patch os.homedir() - return fake path to hide real username
+//     claude-safe.sh creates symlink /home/$FAKE_USER -> real home
+// ============================================================
+os.homedir = function () {
+  return `/home/${FAKE_USER}`;
+};
+
+// ============================================================
+// 9c. Sanitize process.title, process.execPath, process.argv[0]
+//     These can leak Windows paths or WSL-specific info
+// ============================================================
+if (process.title && /[A-Z]:\\|\/mnt\/|wsl/i.test(process.title)) {
+  process.title = 'node';
+}
+
+const _realExecPath = process.execPath;
+Object.defineProperty(process, 'execPath', {
+  get() {
+    if (/\/mnt\/|[A-Z]:\\|wsl/i.test(_realExecPath)) return '/usr/local/bin/node';
+    return _realExecPath;
+  },
+  configurable: true,
+  enumerable: true,
+});
+
+if (process.argv[0] && /\/mnt\/[a-z]|[A-Z]:\\/i.test(process.argv[0])) {
+  process.argv[0] = '/usr/local/bin/node';
+}
 
 // ============================================================
 // 10. Patch fs.readFileSync / fs.readFile - intercept /proc leaks
@@ -174,6 +205,7 @@ const fs = require('fs');
 const PROC_OVERRIDES = {
   '/proc/version': `Linux version ${FAKE_KERNEL} (gcc (Ubuntu 13.2.0-23ubuntu4) 13.2.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #58-Ubuntu SMP PREEMPT_DYNAMIC\n`,
   '/proc/sys/kernel/osrelease': `${FAKE_KERNEL}\n`,
+  '/proc/sys/kernel/hostname': `${FAKE_HOSTNAME}\n`,
 };
 
 // Lazy-generate /proc/cpuinfo from fake CPU info
@@ -339,3 +371,88 @@ cp.spawnSync = function (command, args, options) {
   }
   return _origSpawnSync.call(cp, command, args, options);
 };
+
+// ============================================================
+// 11b. Patch child_process.spawn - most common async child process API
+// ============================================================
+const { PassThrough } = require('stream');
+const EventEmitter = require('events');
+
+const _origSpawn = cp.spawn;
+cp.spawn = function (command, args, options) {
+  const fullCmd = args && Array.isArray(args) ? `${command} ${args.join(' ')}` : String(command);
+  const faked = matchCommand(fullCmd);
+  if (faked !== null) {
+    const result = faked + '\n';
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = new EventEmitter();
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.stdin = new PassThrough();
+    child.pid = process.pid;
+    child.connected = false;
+    child.killed = false;
+    child.exitCode = null;
+    child.signalCode = null;
+    child.spawnfile = command;
+    child.spawnargs = args ? [command, ...args] : [command];
+    child.kill = function () { child.killed = true; return true; };
+    child.ref = function () {};
+    child.unref = function () {};
+    child.disconnect = function () {};
+    process.nextTick(() => {
+      stdout.write(result);
+      stdout.end();
+      stderr.end();
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+      child.emit('exit', 0, null);
+    });
+    return child;
+  }
+  return _origSpawn.call(cp, command, args, options);
+};
+
+// ============================================================
+// 11c. Patch child_process.execFile
+// ============================================================
+const _origExecFile = cp.execFile;
+cp.execFile = function (file, args, options, callback) {
+  if (typeof args === 'function') { callback = args; args = undefined; options = undefined; }
+  if (typeof options === 'function') { callback = options; options = undefined; }
+  const fullCmd = args && Array.isArray(args) ? `${file} ${args.join(' ')}` : String(file);
+  const faked = matchCommand(fullCmd);
+  if (faked !== null) {
+    const result = faked + '\n';
+    if (callback) process.nextTick(() => callback(null, result, ''));
+    const fake = new EventEmitter();
+    fake.stdout = new EventEmitter(); fake.stderr = new EventEmitter();
+    fake.stdin = { write() {}, end() {} };
+    fake.pid = 0; fake.kill = () => {};
+    process.nextTick(() => {
+      fake.stdout.emit('data', result);
+      fake.emit('close', 0);
+    });
+    return fake;
+  }
+  return _origExecFile.call(cp, file, args, options, callback);
+};
+
+// ============================================================
+// 12. Anti-detection: make patched functions look native
+//     Prevents detection via .toString() or property inspection
+// ============================================================
+const nativize = (obj, name) => {
+  const fn = obj[name];
+  if (typeof fn !== 'function') return;
+  Object.defineProperty(fn, 'name', { value: name, configurable: true });
+  fn.toString = () => `function ${name}() { [native code] }`;
+  Object.defineProperty(fn, 'toString', { enumerable: false, configurable: true });
+};
+
+['hostname', 'userInfo', 'release', 'version', 'totalmem', 'freemem',
+ 'uptime', 'cpus', 'networkInterfaces', 'homedir'].forEach(n => nativize(os, n));
+['readFileSync', 'readFile'].forEach(n => nativize(fs, n));
+if (fs.promises) nativize(fs.promises, 'readFile');
+['execSync', 'exec', 'spawnSync', 'spawn', 'execFile'].forEach(n => nativize(cp, n));

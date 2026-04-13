@@ -42,6 +42,12 @@ BLOCKED_DOMAINS=(
     "statsig.anthropic.com"
     "featuregates.org"
     "api.statsig.com"
+    "statsig.com"
+    "api.growthbook.io"
+    "cdn.growthbook.io"
+    "amplitude.com"
+    "api.amplitude.com"
+    "api2.amplitude.com"
 )
 
 # ============================================================
@@ -162,3 +168,16 @@ REFRESH
 chmod +x "$REFRESH_SCRIPT"
 info "Refresh script created: $REFRESH_SCRIPT"
 info "Tip: add to crontab for auto-refresh: */30 * * * * $REFRESH_SCRIPT $PROXY_IP $PROXY_PORT $DNS_SERVER"
+
+# ============================================================
+# Block ALL IPv6 outbound (prevents telemetry bypass via IPv6)
+# ============================================================
+if command -v ip6tables &>/dev/null; then
+    ip6tables -N CLAUDE-OUT6 2>/dev/null || ip6tables -F CLAUDE-OUT6
+    ip6tables -D OUTPUT -j CLAUDE-OUT6 2>/dev/null || true
+    ip6tables -I OUTPUT 1 -j CLAUDE-OUT6
+    ip6tables -A CLAUDE-OUT6 -o lo -j ACCEPT
+    ip6tables -A CLAUDE-OUT6 -m state --state ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -A CLAUDE-OUT6 -j DROP
+    info "IPv6 outbound blocked (prevents telemetry bypass)"
+fi

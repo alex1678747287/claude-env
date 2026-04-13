@@ -66,6 +66,15 @@ setup_node_hook() {
         # Pass config to os-override.js via env
         export CLAUDE_HOSTNAME="$TARGET_HOSTNAME"
         export CLAUDE_USER="$TARGET_USER"
+
+        # Create homedir symlink so /home/$TARGET_USER -> real home
+        # os-override.js patches os.homedir() to return /home/$TARGET_USER
+        local real_user
+        real_user="$(whoami)"
+        if [ "$TARGET_USER" != "$real_user" ] && [ ! -e "/home/$TARGET_USER" ]; then
+            sudo ln -sfn "$HOME" "/home/$TARGET_USER" 2>/dev/null || true
+        fi
+
         info "Node.js/Bun os hook loaded (CJS --require + ESM --import)"
         PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
     else
@@ -173,6 +182,17 @@ setup_env_disguise() {
 }
 
 # ============================================================
+# Layer 2b2: Git identity sanitization (session-only)
+# ============================================================
+setup_git_config() {
+    export GIT_AUTHOR_NAME="$TARGET_USER"
+    export GIT_AUTHOR_EMAIL="${TARGET_USER}@users.noreply.github.com"
+    export GIT_COMMITTER_NAME="$TARGET_USER"
+    export GIT_COMMITTER_EMAIL="${TARGET_USER}@users.noreply.github.com"
+    info "Git identity: $TARGET_USER (session-only, ~/.gitconfig untouched)"
+}
+
+# ============================================================
 # Layer 2c: DNS leak prevention
 # ============================================================
 setup_dns() {
@@ -210,10 +230,16 @@ setup_hosts_block() {
         # Sentry
         "sentry.io"
         "o4507603404627968.ingest.us.sentry.io"
-        # Statsig / GrowthBook
+        # Statsig / GrowthBook / Amplitude
         "statsig.anthropic.com"
         "featuregates.org"
         "api.statsig.com"
+        "statsig.com"
+        "api.growthbook.io"
+        "cdn.growthbook.io"
+        "amplitude.com"
+        "api.amplitude.com"
+        "api2.amplitude.com"
     )
 
     local missing=0
@@ -272,10 +298,28 @@ setup_proxy_check() {
     fi
 
     local proxy_url="${PROXY_PROTOCOL}://${PROXY_HOST}:${PROXY_PORT}"
+    local cache_file="$HOME/.claude-safe/.ipinfo_cache"
+    local cache_ttl=3600  # 1 hour
+    local ip_info=""
 
-    # Get exit IP info via proxy
-    local ip_info
-    ip_info=$(curl -s --connect-timeout 5 --proxy "$proxy_url" "https://ipinfo.io/json" 2>/dev/null || echo "")
+    # Check cache first (avoid repeated ipinfo.io requests)
+    if [ -f "$cache_file" ]; then
+        local cache_age
+        cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+        if [ "$cache_age" -lt "$cache_ttl" ]; then
+            ip_info=$(cat "$cache_file")
+            dim "Proxy IP info from cache (${cache_age}s old)"
+        fi
+    fi
+
+    # Fetch via proxy if no cache (MUST go through proxy, never direct)
+    if [ -z "$ip_info" ]; then
+        ip_info=$(curl -s --connect-timeout 5 --proxy "$proxy_url" "https://ipinfo.io/json" 2>/dev/null || echo "")
+        if [ -n "$ip_info" ]; then
+            mkdir -p "$(dirname "$cache_file")"
+            echo "$ip_info" > "$cache_file"
+        fi
+    fi
 
     if [ -z "$ip_info" ]; then
         warn "Could not check proxy IP quality (ipinfo.io unreachable)"
@@ -565,6 +609,7 @@ claude_setup() {
     if [ -z "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-}" ]; then
         setup_telemetry_block
         setup_env_disguise
+        setup_git_config
         setup_proxy
     else
         # Already loaded from .bashrc, just count the score
