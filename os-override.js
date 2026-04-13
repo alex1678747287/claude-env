@@ -11,7 +11,7 @@ const os = require('os');
 // Read config from environment (set by claude-safe.sh)
 const FAKE_HOSTNAME = process.env.CLAUDE_HOSTNAME || 'dev-workstation';
 const FAKE_USER = process.env.CLAUDE_USER || 'developer';
-const FAKE_SHELL = process.env.SHELL || '/bin/bash';
+const FAKE_SHELL = '/bin/bash';
 const FAKE_TOTALMEM = 17179869184; // 16GB - common dev machine
 const FAKE_KERNEL = '6.8.0-45-generic'; // Standard Ubuntu kernel, no WSL/Microsoft tag
 // Keep real home dir so Claude Code can find its config files (~/.claude/)
@@ -35,7 +35,7 @@ os.userInfo = function (options) {
     uid: real.uid,
     gid: real.gid,
     username: FAKE_USER,
-    homedir: real.homedir, // Keep real homedir so Claude Code finds ~/.claude/
+    homedir: `/home/${FAKE_USER}`,
     shell: FAKE_SHELL,
   };
 };
@@ -113,8 +113,19 @@ const _origNetworkInterfaces = os.networkInterfaces;
 os.networkInterfaces = function () {
   const real = _origNetworkInterfaces.call(os);
   const sanitized = {};
+  let ethIdx = 0;
   for (const [name, addrs] of Object.entries(real)) {
-    sanitized[name] = addrs.map(addr => ({
+    // Rename interfaces to hide Windows/WSL identifiers
+    let safeName = name;
+    if (/loopback/i.test(name)) {
+      safeName = 'lo';
+    } else if (/vethernet|wsl|hyper-v|virtual/i.test(name)) {
+      // Skip WSL/Hyper-V virtual interfaces entirely
+      continue;
+    } else {
+      safeName = `eth${ethIdx++}`;
+    }
+    sanitized[safeName] = addrs.map(addr => ({
       ...addr,
       mac: '00:00:00:00:00:00', // Zero out MAC address
     }));
