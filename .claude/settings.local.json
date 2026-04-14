@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell:*)",
+      "Bash(wsl --shutdown)",
+      "Bash(wsl --status)",
+      "Bash(printf \\\\xEF\\\\xBB\\\\xBF[wsl2]\\\\r\\\\nnetworkingMode=mirrored\\\\r\\\\nautoProxy=true\\\\r\\\\n:*)",
+      "Bash(wsl:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

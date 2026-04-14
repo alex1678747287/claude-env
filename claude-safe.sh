@@ -38,6 +38,7 @@ dim()   { echo -e "${DIM}    $*${NC}"; }
 # Protection score tracker
 PROTECTION_SCORE=0
 PROTECTION_MAX=10
+PROXY_EXIT_IP=""
 
 # ============================================================
 # Layer 1: Node.js os module hook
@@ -326,13 +327,13 @@ setup_proxy_check() {
         return
     fi
 
-    local exit_ip exit_country exit_org detected_tz
-    exit_ip=$(echo "$ip_info" | grep -o '"ip"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+    local exit_country exit_org detected_tz
+    PROXY_EXIT_IP=$(echo "$ip_info" | grep -o '"ip"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     exit_country=$(echo "$ip_info" | grep -o '"country"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     exit_org=$(echo "$ip_info" | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     detected_tz=$(echo "$ip_info" | grep -o '"timezone"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
 
-    info "代理出口: $exit_ip ($exit_country) - $exit_org"
+    info "代理出口: $PROXY_EXIT_IP ($exit_country) - $exit_org"
 
     if [ "$exit_country" = "CN" ]; then
         error "出口 IP 在中国！代理未正常工作。"
@@ -535,7 +536,7 @@ verify_env() {
     echo -e "  主机名:      ${HOSTNAME:-unknown}"
     echo -e "  时区:        ${TZ:-unknown}"
     echo -e "  语言:        ${LANG:-unknown}"
-    echo -e "  代理:        ${HTTPS_PROXY:-未设置}"
+    echo -e "  代理:        ${HTTPS_PROXY:-未设置} -> ${PROXY_EXIT_IP:-未检测}"
     echo -e "  网关:        ${ANTHROPIC_BASE_URL:-直连 (无 cc-gateway)}"
     echo -e "  浏览器:      ${BROWSER:-未设置}"
     echo -e "  Node 钩子:   $([ -n "${NODE_OPTIONS:-}" ] && echo '已激活 (CJS+ESM)' || echo '未激活')"

@@ -656,6 +656,12 @@ fi
 # ============================================================
 # Done
 # ============================================================
+# Detect actual exit IP for display
+EXIT_IP=""
+if [ -n "$PROXY_URL" ]; then
+    EXIT_IP=$(curl -s --connect-timeout 5 --proxy "$PROXY_URL" https://httpbin.org/ip 2>/dev/null | grep -o '"origin"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+fi
+
 echo ""
 echo -e "${GREEN}${BOLD}========================================${NC}"
 echo -e "${GREEN}${BOLD}  安装完成！${NC}"
@@ -671,7 +677,7 @@ echo -e "    ${GREEN}Layer 3${NC} cc-gateway       device_id + 计费头 + 40+ �
 echo -e "    ${GREEN}Layer 4${NC} 代理检测         出口 IP 国家 + 类型验证"
 echo ""
 echo -e "  ${BOLD}你的配置:${NC}"
-echo -e "    代理:     ${CYAN}${PROXY_URL}${NC}"
+echo -e "    代理:     ${CYAN}${PROXY_URL}${NC} -> ${CYAN}${EXIT_IP:-未知}${NC}"
 echo -e "    地区:     ${CYAN}${TARGET_TZ}${NC}"
 echo -e "    身份:     ${CYAN}${TARGET_USER}@${TARGET_HOSTNAME}${NC}"
 echo -e "    防火墙:   ${CYAN}${ENABLE_FIREWALL}${NC}"
