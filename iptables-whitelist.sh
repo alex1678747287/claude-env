@@ -112,7 +112,7 @@ fi
 # Explicitly block telemetry domains (in CLAUDE-BLOCK chain, checked first)
 # ============================================================
 for domain in "${BLOCKED_DOMAINS[@]}"; do
-    ips=$(getent hosts "$domain" 2>/dev/null | awk '{print $1}' || true)
+    ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
     for ip in $ips; do
         iptables -A CLAUDE-BLOCK -d "$ip" -j DROP
     done
@@ -127,7 +127,7 @@ if command -v ipset &>/dev/null; then
     ipset create claude-allowed hash:ip
 
     for domain in "${ALLOWED_DOMAINS[@]}"; do
-        ips=$(getent hosts "$domain" 2>/dev/null | awk '{print $1}' || true)
+        ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
         for ip in $ips; do
             ipset add claude-allowed "$ip" 2>/dev/null || true
         done
@@ -136,7 +136,7 @@ if command -v ipset &>/dev/null; then
     info "Allowed domains via ipset (${#ALLOWED_DOMAINS[@]} domains)"
 else
     for domain in "${ALLOWED_DOMAINS[@]}"; do
-        ips=$(getent hosts "$domain" 2>/dev/null | awk '{print $1}' || true)
+        ips=$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u || true)
         for ip in $ips; do
             iptables -A CLAUDE-OUT -d "$ip" -j ACCEPT
         done

@@ -3,7 +3,9 @@
 # Four-layer protection: Node.js os hook + env/DNS/firewall + cc-gateway + proxy quality
 # Usage: source ~/.claude-safe/claude-safe.sh && claude-run [claude args...]
 
-set -euo pipefail
+# Do NOT use set -e here - this file is sourced into the user's shell,
+# and any non-zero exit would kill the terminal.
+set +e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -472,6 +474,16 @@ setup_gateway() {
         return
     fi
 
+    # Auto-configure: cc-gateway installed but no config.yaml, credentials exist
+    if [ -d "$GATEWAY_DIR" ] && [ ! -f "$GATEWAY_DIR/config.yaml" ] && \
+       [ -f "$HOME/.claude/.credentials.json" ] && [ -f "$GATEWAY_DIR/scripts/quick-setup.sh" ]; then
+        info "检测到 Claude 凭证，正在自动配置 cc-gateway..."
+        local proxy_url="${PROXY_PROTOCOL}://${PROXY_HOST}:${PROXY_PORT}"
+        HTTPS_PROXY="$proxy_url" bash "$GATEWAY_DIR/scripts/quick-setup.sh" &>/dev/null && \
+            info "cc-gateway 配置完成" || \
+            warn "cc-gateway 自动配置失败，可手动运行: bash $GATEWAY_DIR/scripts/quick-setup.sh"
+    fi
+
     # Check if cc-gateway is already running
     if curl -s --connect-timeout 2 "$gateway_url/health" &>/dev/null 2>&1 || \
        curl -s --connect-timeout 2 "$gateway_url" &>/dev/null 2>&1; then
@@ -482,11 +494,10 @@ setup_gateway() {
         return
     fi
 
-    # Not running - try to auto-start if installed
-    if [ -f "$GATEWAY_DIR/start.sh" ]; then
+    # Not running - try to auto-start if installed and configured
+    if [ -f "$GATEWAY_DIR/start.sh" ] && [ -f "$GATEWAY_DIR/config.yaml" ]; then
         info "正在启动 cc-gateway..."
         bash "$GATEWAY_DIR/start.sh" &>/dev/null
-        # Wait for startup
         local retries=0
         while [ $retries -lt 5 ]; do
             sleep 1
@@ -500,12 +511,15 @@ setup_gateway() {
             retries=$((retries + 1))
         done
         warn "cc-gateway 5 秒内未启动"
+    elif [ -d "$GATEWAY_DIR" ] && [ ! -f "$GATEWAY_DIR/config.yaml" ]; then
+        # Installed but not configured (no credentials yet)
+        if [ ! -f "$HOME/.claude/.credentials.json" ]; then
+            info "cc-gateway 待配置 (请先完成 OAuth 登录，下次启动自动配置)"
+        fi
     elif [ "$ENABLE_GATEWAY" = "true" ] || [ "$ENABLE_GATEWAY" = "auto" ]; then
-        # Not installed - offer to install
         if [ -f "$SCRIPT_DIR/cc-gateway-setup.sh" ] || [ -f "$HOME/.claude-safe/cc-gateway-setup.sh" ]; then
             warn "cc-gateway 未安装 (建议安装以获得最大保护)"
             dim "安装: bash ~/.claude-safe/cc-gateway-setup.sh"
-            dim "它会重写 device_id、计费头和 40+ 环境维度"
         fi
     fi
 }
@@ -593,6 +607,7 @@ verify_env() {
     fi
 
     echo -e "${CYAN}========================================${NC}"
+    echo -e "  ${DIM}注意: 防护仅在当前终端生效，其他终端需单独运行 cs${NC}"
     echo ""
 }
 

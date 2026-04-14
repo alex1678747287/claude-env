@@ -426,15 +426,10 @@ fi
 STOPEOF
 chmod +x "$GATEWAY_DIR/stop.sh"
 
-# Run quick-setup if config doesn't exist
-if [ ! -f "$GATEWAY_DIR/config.yaml" ] && [ -f "$GATEWAY_DIR/scripts/quick-setup.sh" ]; then
-    info "正在运行 cc-gateway 快速配置..."
-    echo -e "  ${DIM}如果还未登录 Claude Code，请先执行: claude --login${NC}"
-    _setup_cmd="bash \"$GATEWAY_DIR/scripts/quick-setup.sh\""
-    [ -n "$PROXY_URL" ] && _setup_cmd="HTTPS_PROXY=\"$PROXY_URL\" $_setup_cmd"
-    [ "$AUTO_MODE" = true ] && _setup_cmd="echo '' | $_setup_cmd"
-    eval "$_setup_cmd" || \
-        warn "cc-gateway 配置需要手动完成，参见: $GATEWAY_DIR/README.md"
+# Skip quick-setup during install (credentials won't exist yet)
+# cc-gateway will auto-configure on second `cs` run after OAuth login
+if [ ! -f "$GATEWAY_DIR/config.yaml" ]; then
+    info "cc-gateway 将在首次登录后自动配置"
 fi
 
 # Create systemd service if available
@@ -670,6 +665,11 @@ echo ""
 echo -e "  ${BOLD}快速开始:${NC}"
 echo -e "    ${CYAN}source $SHELL_RC && cs${NC}"
 echo ""
+echo -e "  ${BOLD}首次使用流程:${NC}"
+echo -e "    1. 运行 ${CYAN}cs${NC} -> Claude Code 启动并提示 OAuth 登录"
+echo -e "    2. 在浏览器中完成登录"
+echo -e "    3. 再次运行 ${CYAN}cs${NC} -> cc-gateway 自动配置，获得完整 10/10 防护"
+echo ""
 echo -e "  ${BOLD}保护层:${NC}"
 echo -e "    ${GREEN}Layer 1${NC} Node.js 钩子     os.*/fs.*/child_process.* 已拦截"
 echo -e "    ${GREEN}Layer 2${NC} 环境/DNS/防火墙  20+ 遥测已屏蔽，iptables 白名单"
@@ -681,7 +681,7 @@ echo -e "    代理:     ${CYAN}${PROXY_URL}${NC} -> ${CYAN}${EXIT_IP:-未知}${
 echo -e "    地区:     ${CYAN}${TARGET_TZ}${NC}"
 echo -e "    身份:     ${CYAN}${TARGET_USER}@${TARGET_HOSTNAME}${NC}"
 echo -e "    防火墙:   ${CYAN}${ENABLE_FIREWALL}${NC}"
-echo -e "    网关:     ${CYAN}auto (cc-gateway 已安装)${NC}"
+echo -e "    网关:     ${CYAN}auto (登录后自动配置)${NC}"
 echo ""
 echo -e "  ${DIM}重新配置: bash $SCRIPT_DIR/install.sh${NC}"
 echo -e "  ${DIM}卸载:     bash $SCRIPT_DIR/uninstall.sh${NC}"
