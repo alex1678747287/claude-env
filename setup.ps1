@@ -1,137 +1,118 @@
-# setup.ps1 - Claude Code Safe Environment Windows Setup
-# Usage: Right-click -> Run with PowerShell (as Administrator)
-# Or: powershell -ExecutionPolicy Bypass -File setup.ps1
+# setup.ps1 - Claude Code 安全环境 Windows 安装+启动一体化脚本
+# 首次运行: 安装 WSL + Ubuntu + 安全环境
+# 后续运行: 直接启动 Claude Code 安全环境
+# Usage: powershell -ExecutionPolicy Bypass -File setup.ps1
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Cyan
-Write-Host "  Claude Code Safe Environment - Windows Setup" -ForegroundColor Cyan
+Write-Host "  Claude Code 安全环境" -ForegroundColor Cyan
 Write-Host "  ============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ============================================================
-# 1. Check admin privileges
-# ============================================================
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "[!!] Need Administrator. Re-launching..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
-}
-Write-Host "[OK] Administrator confirmed" -ForegroundColor Green
+$scriptDir = Split-Path -Parent $PSCommandPath
+$drive = $scriptDir.Substring(0,1).ToLower()
+$rest = $scriptDir.Substring(2) -replace '\\','/'
+$wslPath = "/mnt/$drive$rest"
 
 # ============================================================
-# 2. Check WSL
+# 1. 检查 WSL + Ubuntu 是否就绪
 # ============================================================
-Write-Host "[..] Checking WSL..." -ForegroundColor White
+$needInstall = $false
+
 $wslOk = $false
 try {
     $null = wsl --status 2>&1
     if ($LASTEXITCODE -eq 0) { $wslOk = $true }
 } catch {}
 
-if (-not $wslOk) {
-    Write-Host "[!!] WSL not installed. Installing WSL2..." -ForegroundColor Yellow
-    Write-Host "     This may take a few minutes..." -ForegroundColor Gray
-    wsl --install --no-distribution
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[FAIL] WSL install failed. Try: wsl --install" -ForegroundColor Red
-        Read-Host "Press Enter to exit"
-        exit 1
-    }
-    Write-Host "[OK] WSL2 installed. Reboot required." -ForegroundColor Green
-    $reboot = Read-Host "Reboot now? (Y/N)"
-    if ($reboot -eq "Y" -or $reboot -eq "y") {
-        shutdown /r /t 5 /c "Rebooting for WSL2"
-    }
-    Write-Host "Run this script again after reboot." -ForegroundColor Yellow
-    Read-Host "Press Enter to exit"
-    exit 0
-}
-Write-Host "[OK] WSL2 is installed" -ForegroundColor Green
+if (-not $wslOk) { $needInstall = $true }
 
-# ============================================================
-# 3. Check Ubuntu
-# ============================================================
-Write-Host "[..] Checking Ubuntu..." -ForegroundColor White
 $ubuntuOk = $false
-try {
-    $result = wsl -d Ubuntu -- echo ok 2>&1
-    if ($result -match "ok") { $ubuntuOk = $true }
-} catch {}
-
-if (-not $ubuntuOk) {
-    Write-Host "[!!] Ubuntu not found. Installing (~500MB)..." -ForegroundColor Yellow
-    wsl --install -d Ubuntu
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[FAIL] Ubuntu install failed. Try: wsl --install -d Ubuntu" -ForegroundColor Red
-        Read-Host "Press Enter to exit"
-        exit 1
-    }
-    Write-Host "[OK] Ubuntu installed." -ForegroundColor Green
-    Write-Host "[!!] Ubuntu will open for initial setup (create username/password)." -ForegroundColor Yellow
-    Write-Host "     After setup, run this script again." -ForegroundColor Yellow
-    Read-Host "Press Enter to exit"
-    exit 0
+if ($wslOk) {
+    try {
+        $result = wsl -d Ubuntu -- echo ok 2>&1
+        if ($result -match "ok") { $ubuntuOk = $true }
+    } catch {}
+    if (-not $ubuntuOk) { $needInstall = $true }
 }
-Write-Host "[OK] Ubuntu is installed" -ForegroundColor Green
 
 # ============================================================
-# 4. Set WSL2 default
+# 2. 需要安装时，请求管理员权限
 # ============================================================
+if ($needInstall) {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Host "[!!] 需要管理员权限安装 WSL，正在提权..." -ForegroundColor Yellow
+        Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+        exit
+    }
+
+    if (-not $wslOk) {
+        Write-Host "[..] 正在安装 WSL2..." -ForegroundColor White
+        wsl --install --no-distribution
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[x] WSL 安装失败，请手动运行: wsl --install" -ForegroundColor Red
+            Read-Host "按回车退出"
+            exit 1
+        }
+        Write-Host "[+] WSL2 已安装，需要重启。" -ForegroundColor Green
+        $reboot = Read-Host "现在重启? (Y/N)"
+        if ($reboot -eq "Y" -or $reboot -eq "y") {
+            shutdown /r /t 5 /c "重启以完成 WSL2 安装"
+        }
+        Write-Host "重启后再次运行此脚本。" -ForegroundColor Yellow
+        Read-Host "按回车退出"
+        exit 0
+    }
+
+    if (-not $ubuntuOk) {
+        Write-Host "[..] 正在安装 Ubuntu (~500MB)..." -ForegroundColor Yellow
+        wsl --install -d Ubuntu
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[x] Ubuntu 安装失败，请手动运行: wsl --install -d Ubuntu" -ForegroundColor Red
+            Read-Host "按回车退出"
+            exit 1
+        }
+        Write-Host "[+] Ubuntu 已安装。" -ForegroundColor Green
+        Write-Host "[!!] Ubuntu 将打开进行初始设置（创建用户名/密码）。" -ForegroundColor Yellow
+        Write-Host "     设置完成后再次运行此脚本。" -ForegroundColor Yellow
+        Read-Host "按回车退出"
+        exit 0
+    }
+}
+
 wsl --set-default-version 2 2>&1 | Out-Null
-Write-Host "[OK] WSL2 set as default" -ForegroundColor Green
-Write-Host ""
+Write-Host "[+] WSL2 + Ubuntu 就绪" -ForegroundColor Green
 
 # ============================================================
-# 5. Copy files to WSL
+# 3. 同步文件到 WSL
 # ============================================================
-Write-Host "[..] Copying files to WSL..." -ForegroundColor White
+Write-Host "[..] 同步文件到 WSL..." -ForegroundColor White
+wsl -d Ubuntu -- bash -c "mkdir -p ~/claude-env && cp $wslPath/*.sh $wslPath/*.js $wslPath/*.mjs ~/claude-env/ 2>/dev/null; chmod +x ~/claude-env/*.sh 2>/dev/null"
+Write-Host "[+] 文件已同步" -ForegroundColor Green
 
-$scriptDir = Split-Path -Parent $PSCommandPath
-wsl -d Ubuntu -- bash -c "mkdir -p ~/claude-env"
-
-$files = @(
-    "claude-safe.sh", "os-override.js", "os-override.mjs",
-    "iptables-whitelist.sh", "cc-gateway-setup.sh",
-    "install.sh", "uninstall.sh", "cs-quick.sh"
-)
-
-# Convert Windows path to WSL /mnt/c/... path
-$drive = $scriptDir.Substring(0,1).ToLower()
-$rest = $scriptDir.Substring(2) -replace '\\','/'
-$wslPath = "/mnt/$drive$rest"
-
-foreach ($f in $files) {
-    if (Test-Path "$scriptDir\$f") {
-        wsl -d Ubuntu -- bash -c "cp '$wslPath/$f' ~/claude-env/$f 2>/dev/null" 2>&1 | Out-Null
-    }
+# ============================================================
+# 4. 检查是否已安装，未安装则自动安装
+# ============================================================
+$installed = wsl -d Ubuntu -- bash -c "test -f ~/.claude-safe/config.env && echo YES || echo NO" 2>&1
+if ($installed -match "NO") {
+    Write-Host ""
+    Write-Host "[..] 首次运行，正在自动安装安全环境..." -ForegroundColor Cyan
+    Write-Host ""
+    wsl -d Ubuntu -- bash -c "cd ~/claude-env && bash install.sh --auto"
+    Write-Host ""
+    Write-Host "[+] 安装完成!" -ForegroundColor Green
 }
 
-Write-Host "[OK] Files copied to WSL ~/claude-env/" -ForegroundColor Green
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host " Starting interactive installer in WSL..." -ForegroundColor Cyan
-Write-Host " Follow the prompts to configure proxy, region, etc." -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host ""
-
 # ============================================================
-# 6. Run installer
+# 5. 启动 Claude Code 安全环境
 # ============================================================
-wsl -d Ubuntu -- bash -c "cd ~/claude-env && chmod +x *.sh && bash install.sh"
+Write-Host ""
+Write-Host "  正在启动 Claude Code 安全环境..." -ForegroundColor Cyan
+Write-Host ""
+wsl -d Ubuntu -- bash -ic "source ~/.claude-safe/config.env 2>/dev/null; source ~/.claude-safe/claude-safe.sh && claude-run"
 
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host " Setup complete!" -ForegroundColor Green
-Write-Host "" -ForegroundColor Green
-Write-Host " How to use:" -ForegroundColor White
-Write-Host "   1. Open WSL: search 'Ubuntu' in Start menu" -ForegroundColor White
-Write-Host "   2. Type: cs" -ForegroundColor Cyan
-Write-Host "" -ForegroundColor White
-Write-Host " Or from Windows: wsl -d Ubuntu -- bash -c 'cs'" -ForegroundColor Gray
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host ""
-Read-Host "Press Enter to exit"
+Read-Host "按回车退出"

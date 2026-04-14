@@ -75,11 +75,11 @@ setup_node_hook() {
             sudo ln -sfn "$HOME" "/home/$TARGET_USER" 2>/dev/null || true
         fi
 
-        info "Node.js/Bun os hook loaded (CJS --require + ESM --import)"
+        info "Node.js/Bun os 钩子已加载 (CJS --require + ESM --import)"
         PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
     else
-        warn "os-override.js not found - Node.js level disguise disabled"
-        dim "Copy os-override.js to $SCRIPT_DIR/"
+        warn "os-override.js 未找到 - Node.js 层伪装已禁用"
+        dim "请将 os-override.js 复制到 $SCRIPT_DIR/"
     fi
 }
 
@@ -120,7 +120,7 @@ setup_telemetry_block() {
     export DO_NOT_TRACK=1
     export NEXT_TELEMETRY_DISABLED=1
 
-    info "Telemetry env vars blocked (20+ mechanisms)"
+    info "遥测环境变量已屏蔽 (20+ 机制)"
     PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
 }
 
@@ -178,7 +178,7 @@ setup_env_disguise() {
     export EDITOR="vim"
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
-    info "Environment disguised: $TARGET_HOSTNAME / $TARGET_TZ / $TARGET_LANG"
+    info "环境已伪装: $TARGET_HOSTNAME / $TARGET_TZ / $TARGET_LANG"
 }
 
 # ============================================================
@@ -189,7 +189,7 @@ setup_git_config() {
     export GIT_AUTHOR_EMAIL="${TARGET_USER}@users.noreply.github.com"
     export GIT_COMMITTER_NAME="$TARGET_USER"
     export GIT_COMMITTER_EMAIL="${TARGET_USER}@users.noreply.github.com"
-    info "Git identity: $TARGET_USER (session-only, ~/.gitconfig untouched)"
+    info "Git 身份: $TARGET_USER (仅当前会话，~/.gitconfig 不受影响)"
 }
 
 # ============================================================
@@ -205,12 +205,12 @@ setup_dns() {
         if [ -w /etc/resolv.conf ]; then
             # Temporarily override DNS for this session
             sudo bash -c "echo 'nameserver $DNS_SERVER' > /etc/resolv.conf" 2>/dev/null && \
-                info "DNS set to $DNS_SERVER (was $current_dns)" || \
-                warn "DNS still pointing to $current_dns (could not override)"
+                info "DNS 已设置为 $DNS_SERVER (原: $current_dns)" || \
+                warn "DNS 仍指向 $current_dns (无法覆盖)"
         else
-            warn "DNS pointing to $current_dns - may leak queries"
-            dim "Fix: add to /etc/wsl.conf: [network] generateResolvConf=false"
-            dim "Then: echo 'nameserver $DNS_SERVER' | sudo tee /etc/resolv.conf"
+            warn "DNS 指向 $current_dns - 可能泄漏查询"
+            dim "修复: 在 /etc/wsl.conf 添加: [network] generateResolvConf=false"
+            dim "然后: echo 'nameserver $DNS_SERVER' | sudo tee /etc/resolv.conf"
         fi
     else
         info "DNS: $current_dns"
@@ -250,7 +250,7 @@ setup_hosts_block() {
     done
 
     if [ "$missing" -gt 0 ]; then
-        warn "$missing telemetry domains not in /etc/hosts"
+        warn "$missing 个遥测域名未在 /etc/hosts 中屏蔽"
         dim "Run: sudo bash -c 'cat >> /etc/hosts << EOF"
         dim ""
         dim "# Claude Code telemetry block"
@@ -259,7 +259,7 @@ setup_hosts_block() {
         done
         dim "EOF'"
     else
-        info "Telemetry domains blocked in /etc/hosts (${#domains[@]} domains)"
+        info "遥测域名已在 /etc/hosts 中屏蔽 (${#domains[@]} 个域名)"
     fi
 }
 
@@ -282,9 +282,9 @@ setup_proxy() {
     if command -v curl &>/dev/null; then
         if curl -s --connect-timeout 3 --proxy "$proxy_url" https://httpbin.org/ip -o /dev/null 2>/dev/null; then
             PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
-            info "Proxy connectivity OK: $proxy_url"
+            info "代理连接正常: $proxy_url"
         else
-            warn "Proxy not reachable at $proxy_url"
+            warn "代理不可达: $proxy_url"
         fi
     fi
 }
@@ -308,7 +308,7 @@ setup_proxy_check() {
         cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
         if [ "$cache_age" -lt "$cache_ttl" ]; then
             ip_info=$(cat "$cache_file")
-            dim "Proxy IP info from cache (${cache_age}s old)"
+            dim "代理 IP 信息来自缓存 (${cache_age}s 前)"
         fi
     fi
 
@@ -322,7 +322,7 @@ setup_proxy_check() {
     fi
 
     if [ -z "$ip_info" ]; then
-        warn "Could not check proxy IP quality (ipinfo.io unreachable)"
+        warn "无法检查代理 IP 质量 (ipinfo.io 不可达)"
         return
     fi
 
@@ -332,10 +332,10 @@ setup_proxy_check() {
     exit_org=$(echo "$ip_info" | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
     detected_tz=$(echo "$ip_info" | grep -o '"timezone"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
 
-    info "Proxy exit: $exit_ip ($exit_country) - $exit_org"
+    info "代理出口: $exit_ip ($exit_country) - $exit_org"
 
     if [ "$exit_country" = "CN" ]; then
-        error "Exit IP is in China! Proxy is not working correctly."
+        error "出口 IP 在中国！代理未正常工作。"
         return
     fi
 
@@ -407,7 +407,7 @@ setup_proxy_check() {
 
     # Apply if different from current config
     if [ -n "$new_tz" ] && [ "$new_tz" != "$TARGET_TZ" ]; then
-        warn "IP region changed: $TARGET_TZ -> $new_tz (auto-adjusting)"
+        warn "IP 地区变更: $TARGET_TZ -> $new_tz (自动调整)"
         TARGET_TZ="$new_tz"
         export TZ="$new_tz"
         export CLAUDE_TZ="$new_tz"
@@ -424,15 +424,15 @@ setup_proxy_check() {
     export CLAUDE_USER="${TARGET_USER}"
 
     PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
-    info "Identity matched to exit IP: $new_tz / $new_lang"
+    info "身份已匹配出口 IP: $new_tz / $new_lang"
 
     # Warn about datacenter/shared IPs
     if echo "$exit_org" | grep -qi 'hosting\|datacenter\|cloud\|server\|vps\|digital.ocean\|vultr\|linode\|hetzner\|ovh'; then
-        warn "Datacenter IP detected - higher risk of shared usage"
-        dim "Residential/ISP proxy recommended for lower detection risk"
+        warn "检测到数据中心 IP - 共享使用风险较高"
+        dim "建议使用住宅/ISP 代理以降低检测风险"
     else
         PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
-        info "Proxy IP type: residential/ISP (good)"
+        info "代理 IP 类型: 住宅/ISP (良好)"
     fi
 }
 
@@ -450,14 +450,14 @@ setup_firewall() {
     fi
 
     if [ -f "$fw_script" ]; then
-        warn "Activating iptables firewall (requires sudo)..."
+        warn "正在激活 iptables 防火墙 (需要 sudo)..."
         sudo bash "$fw_script" "$PROXY_HOST" "$PROXY_PORT" "$DNS_SERVER" && {
             PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
-            info "Firewall active: only proxy + essential domains allowed"
+            info "防火墙已激活: 仅允许代理 + 必要域名"
         } || \
-            warn "Firewall setup failed (iptables may not be available in WSL2)"
+            warn "防火墙设置失败 (WSL2 中 iptables 可能不可用)"
     else
-        warn "iptables-whitelist.sh not found"
+        warn "iptables-whitelist.sh 未找到"
     fi
 }
 
@@ -476,14 +476,14 @@ setup_gateway() {
        curl -s --connect-timeout 2 "$gateway_url" &>/dev/null 2>&1; then
         export ANTHROPIC_BASE_URL="$gateway_url"
         PROTECTION_SCORE=$((PROTECTION_SCORE + 3))
-        info "cc-gateway active at $gateway_url"
-        dim "Device fingerprint, billing header, env dimensions will be rewritten"
+        info "cc-gateway 已运行: $gateway_url"
+        dim "设备指纹、计费头、环境维度将被重写"
         return
     fi
 
     # Not running - try to auto-start if installed
     if [ -f "$GATEWAY_DIR/start.sh" ]; then
-        info "Starting cc-gateway..."
+        info "正在启动 cc-gateway..."
         bash "$GATEWAY_DIR/start.sh" &>/dev/null
         # Wait for startup
         local retries=0
@@ -493,18 +493,18 @@ setup_gateway() {
                curl -s --connect-timeout 1 "$gateway_url" &>/dev/null 2>&1; then
                 export ANTHROPIC_BASE_URL="$gateway_url"
                 PROTECTION_SCORE=$((PROTECTION_SCORE + 3))
-                info "cc-gateway started at $gateway_url"
+                info "cc-gateway 已启动: $gateway_url"
                 return
             fi
             retries=$((retries + 1))
         done
-        warn "cc-gateway failed to start within 5s"
+        warn "cc-gateway 5 秒内未启动"
     elif [ "$ENABLE_GATEWAY" = "true" ] || [ "$ENABLE_GATEWAY" = "auto" ]; then
         # Not installed - offer to install
         if [ -f "$SCRIPT_DIR/cc-gateway-setup.sh" ] || [ -f "$HOME/.claude-safe/cc-gateway-setup.sh" ]; then
-            warn "cc-gateway not installed (recommended for maximum protection)"
-            dim "Install: bash ~/.claude-safe/cc-gateway-setup.sh"
-            dim "It rewrites device_id, billing header, and 40+ env dimensions"
+            warn "cc-gateway 未安装 (建议安装以获得最大保护)"
+            dim "安装: bash ~/.claude-safe/cc-gateway-setup.sh"
+            dim "它会重写 device_id、计费头和 40+ 环境维度"
         fi
     fi
 }
@@ -515,13 +515,13 @@ setup_gateway() {
 setup_browser_auth() {
     if command -v wslview &>/dev/null; then
         export BROWSER="wslview"
-        info "OAuth browser: wslview (opens Windows browser)"
+        info "OAuth 浏览器: wslview (打开 Windows 浏览器)"
     elif command -v xdg-open &>/dev/null; then
         export BROWSER="xdg-open"
-        info "OAuth browser: xdg-open"
+        info "OAuth 浏览器: xdg-open"
     else
-        warn "No browser bridge. Install: sudo apt install wslu"
-        dim "Or manually copy the OAuth URL when prompted"
+        warn "未找到浏览器桥接。安装: sudo apt install wslu"
+        dim "或在提示时手动复制 OAuth URL"
         export BROWSER="echo"
     fi
 }
@@ -531,16 +531,16 @@ setup_browser_auth() {
 # ============================================================
 verify_env() {
     echo ""
-    echo -e "${CYAN}========== Environment Status ==========${NC}"
-    echo -e "  Hostname:    ${HOSTNAME:-unknown}"
-    echo -e "  Timezone:    ${TZ:-unknown}"
-    echo -e "  Locale:      ${LANG:-unknown}"
-    echo -e "  Proxy:       ${HTTPS_PROXY:-not set}"
-    echo -e "  Gateway:     ${ANTHROPIC_BASE_URL:-direct (no cc-gateway)}"
-    echo -e "  Browser:     ${BROWSER:-not set}"
-    echo -e "  Node hook:   $([ -n "${NODE_OPTIONS:-}" ] && echo 'active (CJS+ESM)' || echo 'inactive')"
-    echo -e "  Firewall:    $([ "$ENABLE_FIREWALL" = "true" ] && echo 'active' || echo 'inactive')"
-    echo -e "  Telemetry:   BLOCKED"
+    echo -e "${CYAN}========== 环境状态 ==========${NC}"
+    echo -e "  主机名:      ${HOSTNAME:-unknown}"
+    echo -e "  时区:        ${TZ:-unknown}"
+    echo -e "  语言:        ${LANG:-unknown}"
+    echo -e "  代理:        ${HTTPS_PROXY:-未设置}"
+    echo -e "  网关:        ${ANTHROPIC_BASE_URL:-直连 (无 cc-gateway)}"
+    echo -e "  浏览器:      ${BROWSER:-未设置}"
+    echo -e "  Node 钩子:   $([ -n "${NODE_OPTIONS:-}" ] && echo '已激活 (CJS+ESM)' || echo '未激活')"
+    echo -e "  防火墙:      $([ "$ENABLE_FIREWALL" = "true" ] && echo '已激活' || echo '未激活')"
+    echo -e "  遥测:        已屏蔽"
 
     # Leak check
     local leaks=""
@@ -549,46 +549,46 @@ verify_env() {
     done
 
     if [ -n "$leaks" ]; then
-        echo -e "  ${RED}Leaks:       $leaks${NC}"
+        echo -e "  ${RED}泄漏:        $leaks${NC}"
     else
-        echo -e "  Leaks:       ${GREEN}none detected${NC}"
+        echo -e "  泄漏:        ${GREEN}未检测到${NC}"
     fi
 
     # Kernel leak check
     if uname -r | grep -qi 'microsoft\|wsl'; then
-        echo -e "  ${YELLOW}Kernel:      WSL signature in uname -r (Node hook will mask os.release())${NC}"
+        echo -e "  ${YELLOW}内核:        uname -r 中有 WSL 签名 (Node 钩子会伪装 os.release())${NC}"
     fi
 
     # /proc filesystem leak check
     if [ -f /proc/version ] && grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
-        echo -e "  ${YELLOW}/proc:       WSL signature in /proc/version (Node hook intercepts fs.readFile)${NC}"
+        echo -e "  ${YELLOW}/proc:       /proc/version 中有 WSL 签名 (Node 钩子拦截 fs.readFile)${NC}"
     fi
 
     # Protection score display
-    echo -e "${CYAN}========== Protection Score ============${NC}"
+    echo -e "${CYAN}========== 防护评分 ============${NC}"
     local bar=""
     local i
     for ((i=0; i<PROTECTION_SCORE; i++)); do bar+="█"; done
     for ((i=PROTECTION_SCORE; i<PROTECTION_MAX; i++)); do bar+="░"; done
 
     local color="$RED"
-    local level="LOW"
+    local level="低"
     if [ "$PROTECTION_SCORE" -ge 8 ]; then
-        color="$GREEN"; level="MAXIMUM"
+        color="$GREEN"; level="最高"
     elif [ "$PROTECTION_SCORE" -ge 6 ]; then
-        color="$GREEN"; level="HIGH"
+        color="$GREEN"; level="高"
     elif [ "$PROTECTION_SCORE" -ge 4 ]; then
-        color="$YELLOW"; level="MEDIUM"
+        color="$YELLOW"; level="中"
     fi
 
-    echo -e "  Score:       ${color}${bar} ${PROTECTION_SCORE}/${PROTECTION_MAX} (${level})${NC}"
+    echo -e "  评分:        ${color}${bar} ${PROTECTION_SCORE}/${PROTECTION_MAX} (${level})${NC}"
 
     # Recommendations for missing points
     if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
-        echo -e "  ${DIM}+3 Install cc-gateway: bash ~/.claude-safe/cc-gateway-setup.sh${NC}"
+        echo -e "  ${DIM}+3 安装 cc-gateway: bash ~/.claude-safe/cc-gateway-setup.sh${NC}"
     fi
     if [ "$ENABLE_FIREWALL" != "true" ]; then
-        echo -e "  ${DIM}+1 Enable firewall: CLAUDE_ENABLE_FIREWALL=true in config.env${NC}"
+        echo -e "  ${DIM}+1 启用防火墙: 在 config.env 中设置 CLAUDE_ENABLE_FIREWALL=true${NC}"
     fi
 
     echo -e "${CYAN}========================================${NC}"
@@ -599,7 +599,7 @@ verify_env() {
 # Main setup
 # ============================================================
 claude_setup() {
-    echo -e "${CYAN}Claude Code Safe Environment v3${NC}"
+    echo -e "${CYAN}Claude Code 安全环境 v3${NC}"
     echo ""
 
     PROTECTION_SCORE=0
@@ -613,15 +613,15 @@ claude_setup() {
         setup_proxy
     else
         # Already loaded from .bashrc, just count the score
-        info "Environment pre-loaded from shell profile"
+        info "环境已从 shell 配置文件预加载"
         PROTECTION_SCORE=$((PROTECTION_SCORE + 1))
         # Verify proxy is working
         local proxy_url="${PROXY_PROTOCOL}://${PROXY_HOST}:${PROXY_PORT}"
         if curl -s --connect-timeout 3 --proxy "$proxy_url" https://httpbin.org/ip -o /dev/null 2>/dev/null; then
             PROTECTION_SCORE=$((PROTECTION_SCORE + 2))
-            info "Proxy connectivity OK: $proxy_url"
+            info "代理连接正常: $proxy_url"
         else
-            warn "Proxy not reachable at $proxy_url"
+            warn "代理不可达: $proxy_url"
         fi
     fi
 
@@ -635,7 +635,7 @@ claude_setup() {
     setup_browser_auth
     verify_env
 
-    info "Ready. Use 'claude-run' to launch."
+    info "就绪。使用 'claude-run' 启动。"
 }
 
 # ============================================================
@@ -649,14 +649,14 @@ claude-run() {
     local claude_bin=""
     if command -v claude-private &>/dev/null; then
         claude_bin="claude-private"
-        info "Using claude-private (binary-patched, zero telemetry)"
+        info "使用 claude-private (二进制补丁版，零遥测)"
     elif command -v claude &>/dev/null; then
         claude_bin="claude"
-        info "Using official claude (telemetry blocked via env + hooks)"
+        info "使用官方 claude (遥测已通过环境变量 + 钩子屏蔽)"
     else
-        error "Claude Code not found."
+        error "Claude Code 未找到。"
         dim "npm install -g @anthropic-ai/claude-code"
-        dim "Or: https://github.com/ultrmgns/claude-private"
+        dim "或: https://github.com/ultrmgns/claude-private"
         return 1
     fi
 

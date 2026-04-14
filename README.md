@@ -53,10 +53,9 @@ Layer 4: 代理 IP 质量检测
 
 ```
 1. 克隆仓库到本地
-2. 右键 setup.bat -> 以管理员身份运行
-3. 脚本会自动安装 WSL2 + Ubuntu（已安装则跳过）
-4. 自动进入 WSL 交互式安装引导
-5. 安装完成后，打开 WSL 输入 cs 即可
+2. 双击 setup.bat（首次需要管理员权限安装 WSL2）
+3. 全自动完成：安装 WSL2 + Ubuntu + 安全环境配置 + 启动
+4. 后续每次双击 setup.bat 即可直接启动
 ```
 
 ### WSL / Linux 用户
@@ -66,46 +65,32 @@ Layer 4: 代理 IP 质量检测
 git clone https://github.com/alex1678747287/claude-env.git
 cd claude-env
 
-# 2. 交互式安装（自动引导配置代理、地区、DNS、cc-gateway、防火墙）
-bash install.sh
+# 2. 全自动安装（无需交互）
+bash install.sh --auto
 
 # 3. 启动
 cs
 ```
 
-安装过程会引导你完成所有配置，无需手动编辑任何文件。
-
-一键启动也可以用：
+也可以用交互模式安装（手动确认每一步）：
 
 ```bash
-bash cs-quick.sh
+bash install.sh
 ```
 
-## 安装引导流程
+## 安装流程（全自动）
+
+`install.sh --auto` 自动完成以下步骤，无需任何交互：
 
 ```
-Step 1: 代理配置
-  - 自动检测 Windows 宿主机 IP
-  - 自动探测代理端口 (7890/1080/10808)
-  - 测试代理连通性
-
-Step 2: 身份伪装
-  - 选择地区预设（美西/美东/日本/新加坡/英国/自定义）
-  - 自动匹配时区、语言、主机名
-
-Step 3: DNS + 遥测屏蔽
-  - 自动修复 DNS 泄漏
-  - 自动屏蔽 8 个遥测域名
-
-Step 4: cc-gateway 安装（必装）
-  - 自动 clone + npm install
-  - 自动生成启动脚本
-  - 启动时自动拉起
-
-Step 5: 防火墙 + 配置生成
-  - iptables 出站白名单
-  - 自动生成 config.env
+Step 1: 代理配置 - 自动检测 Windows IP + 扫描常用代理端口
+Step 2: 身份伪装 - 根据代理出口 IP 自动匹配时区/语言/主机名
+Step 3: DNS + 遥测屏蔽 - 自动修复 DNS 泄漏 + 屏蔽遥测域名
+Step 4: cc-gateway - 自动 clone + 安装 + 配置
+Step 5: 防火墙 + 配置生成 - iptables 白名单 + 生成 config.env
 ```
+
+如需手动调整，运行 `bash install.sh`（不带 --auto）进入交互模式。
 
 ## 配置说明
 
@@ -167,16 +152,19 @@ CC_GATEWAY_PORT=8443
 ## 文件说明
 
 ```
-setup.bat               # Windows 一键引导（自动安装 WSL2 + Ubuntu）
+setup.bat               # Windows 一键安装+启动（双击即可）
+setup.ps1               # PowerShell 安装+启动一体化脚本
+start.bat               # Windows 轻量启动（跳过 WSL 安装检查）
 claude-safe.sh          # 主脚本：四层防护编排
 os-override.js          # Layer 1：Node.js/Bun os/fs/child_process hook（CJS）
 os-override.mjs         # Layer 1：ESM wrapper（Node.js 20+ ESM 入口兼容）
 iptables-whitelist.sh   # Layer 2：iptables 出站白名单
-install.sh              # 交互式安装脚本（内置 cc-gateway 安装）
+install.sh              # 安装脚本（支持 --auto 全自动模式）
 uninstall.sh            # 卸载脚本
-cs-quick.sh             # 一键启动脚本
+cs-quick.sh             # WSL 内一键启动脚本
 cc-gateway-setup.sh     # cc-gateway 独立安装脚本（手动使用）
-config.env              # 配置文件（安装引导自动生成，不入库）
+USAGE.md                # 详细使用指南
+config.env              # 配置文件（安装自动生成，不入库）
 ```
 
 ## 注意事项
